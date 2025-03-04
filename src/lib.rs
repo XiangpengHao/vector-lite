@@ -39,7 +39,7 @@ impl<const N: usize> Vector<N> {
         for (v, o) in coords.iter_mut().zip(self.0.iter().zip(other.0.iter())) {
             *v = o.1 - o.0;
         }
-        Vector(coords)
+        Vector::new(coords)
     }
 
     pub fn add(&self, vector: &Vector<N>) -> Vector<N> {
@@ -47,7 +47,7 @@ impl<const N: usize> Vector<N> {
         for (v, o) in coords.iter_mut().zip(self.0.iter().zip(vector.0.iter())) {
             *v = o.1 + o.0;
         }
-        Vector(coords)
+        Vector::new(coords)
     }
 
     pub fn avg(&self, vector: &Vector<N>) -> Vector<N> {
@@ -55,7 +55,7 @@ impl<const N: usize> Vector<N> {
         for (v, o) in coords.iter_mut().zip(self.0.iter().zip(vector.0.iter())) {
             *v = (o.1 + o.0) / 2.0;
         }
-        Vector(coords)
+        Vector::new(coords)
     }
 
     pub fn dot_product(&self, vector: &Vector<N>) -> f32 {
@@ -230,13 +230,14 @@ fn deduplicate<const N: usize>(vectors: &[Vector<N>], ids: &[i32]) -> (Vec<Vecto
     let mut hashes_seen = HashSet::new();
     let mut dedup_vectors = Vec::new();
     let mut dedup_ids = Vec::new();
-    for i in 0..vectors.len() {
-        if !hashes_seen.contains(&vectors[i]) {
-            hashes_seen.insert(&vectors[i]);
-            dedup_vectors.push(vectors[i].clone());
-            dedup_ids.push(ids[i]);
+    for (vector, id) in vectors.iter().zip(ids.iter()) {
+        if !hashes_seen.contains(&vector) {
+            hashes_seen.insert(vector);
+            dedup_vectors.push(vector.clone());
+            dedup_ids.push(*id);
         }
     }
+
     (dedup_vectors, dedup_ids)
 }
 
@@ -252,12 +253,12 @@ mod tests {
     fn test_basic_nearest_neighbor() {
         let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
         let vectors = vec![
-            Vector([10.0, 20.0, 30.0]),
-            Vector([10.0, 30.0, 20.0]),
-            Vector([20.0, 10.0, 30.0]),
-            Vector([20.0, 30.0, 10.0]),
-            Vector([30.0, 20.0, 10.0]),
-            Vector([30.0, 10.0, 20.0]),
+            Vector::new([10.0, 20.0, 30.0]),
+            Vector::new([10.0, 30.0, 20.0]),
+            Vector::new([20.0, 10.0, 30.0]),
+            Vector::new([20.0, 30.0, 10.0]),
+            Vector::new([30.0, 20.0, 10.0]),
+            Vector::new([30.0, 10.0, 20.0]),
         ];
 
         let ids = vec![1, 2, 3, 4, 5, 6];
@@ -274,7 +275,7 @@ mod tests {
 
         // Query vectors with a small distance should return the closest vector
         for (i, vector) in vectors.iter().enumerate() {
-            let query = vector.add(&Vector([0.1, 0.1, 0.1]));
+            let query = vector.add(&Vector::new([0.1, 0.1, 0.1]));
             let results = index.search(&query, 2);
             assert_eq!(results.len(), 2);
             assert_eq!(results[0].0, ids[i]);
@@ -285,12 +286,12 @@ mod tests {
     fn test_top_2_nearest_neighbor() {
         let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
         let vectors = vec![
-            Vector([10.0, 20.0, 30.0]),
-            Vector([10.0, 20.0, 30.1]),
-            Vector([20.0, 30.0, 10.0]),
-            Vector([20.0, 30.1, 10.0]),
-            Vector([30.0, 20.0, 10.0]),
-            Vector([30.1, 20.0, 10.0]),
+            Vector::new([10.0, 20.0, 30.0]),
+            Vector::new([10.0, 20.0, 30.1]),
+            Vector::new([20.0, 30.0, 10.0]),
+            Vector::new([20.0, 30.1, 10.0]),
+            Vector::new([30.0, 20.0, 10.0]),
+            Vector::new([30.1, 20.0, 10.0]),
         ];
 
         let ids = vec![1, 2, 3, 4, 5, 6];
@@ -315,16 +316,16 @@ mod tests {
     fn test_duplicate_vectors() {
         let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
         let vectors = vec![
-            Vector([1.0, 1.0, 1.0]),
-            Vector([1.0, 1.0, 1.0]), // duplicate of the first vector
-            Vector([2.0, 2.0, 2.0]),
+            Vector::new([1.0, 1.0, 1.0]),
+            Vector::new([1.0, 1.0, 1.0]), // duplicate of the first vector
+            Vector::new([2.0, 2.0, 2.0]),
         ];
         let ids = vec![10, 20, 30];
 
         let index = ANNIndex::build_index(5, 1, &vectors, &ids, &mut seed_rng);
 
         // Query exactly at the duplicate value.
-        let query = Vector([1.0, 1.0, 1.0]);
+        let query = Vector::new([1.0, 1.0, 1.0]);
         let top_k = 3;
         let results = index.search(&query, top_k);
 
@@ -349,11 +350,11 @@ mod tests {
     fn test_top_k_exceeds_total_and_high_dim() {
         // Create five 4D vectors.
         let vectors = vec![
-            Vector([0.0, 0.0, 0.0, 0.0]),
-            Vector([1.0, 0.0, 0.0, 0.0]),
-            Vector([0.0, 1.0, 0.0, 0.0]),
-            Vector([0.0, 0.0, 1.0, 0.0]),
-            Vector([0.0, 0.0, 0.0, 1.0]),
+            Vector::new([0.0, 0.0, 0.0, 0.0]),
+            Vector::new([1.0, 0.0, 0.0, 0.0]),
+            Vector::new([0.0, 1.0, 0.0, 0.0]),
+            Vector::new([0.0, 0.0, 1.0, 0.0]),
+            Vector::new([0.0, 0.0, 0.0, 1.0]),
         ];
         let ids = vec![100, 200, 300, 400, 500];
 
@@ -362,7 +363,7 @@ mod tests {
         let index = ANNIndex::build_index(3, 2, &vectors, &ids, &mut seed_rng);
 
         // Query with a vector that lies equidistant from all the given vectors.
-        let query = Vector([0.5, 0.5, 0.5, 0.5]);
+        let query = Vector::new([0.5, 0.5, 0.5, 0.5]);
         let top_k = 10; // Request more neighbors than there are unique vectors.
         let results = index.search(&query, top_k);
 
