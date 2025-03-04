@@ -5,7 +5,7 @@ use vector_search::{ANNIndex, Vector};
 
 fn gen_vector<const N: usize>(rng: &mut StdRng) -> Vector<N> {
     let coords: [f32; N] = std::array::from_fn(|_| rng.random_range(-1.0..1.0));
-    Vector::new(coords)
+    Vector::from(coords)
 }
 
 // Utility function to generate random vectors
@@ -19,14 +19,13 @@ fn generate_random_vectors<const N: usize>(count: usize, seed: u64) -> (Vec<Vect
     (vectors, ids)
 }
 
+const DIM: usize = 768;
 const MAX_LEAF_SIZE: i32 = 15;
 const NUM_TREES: i32 = 3;
 
 // Benchmark for building index
 fn bench_build_index(c: &mut Criterion) {
     let mut group = c.benchmark_group("ANN Index Building");
-
-    const DIM: usize = 768;
 
     let sizes = [1_000, 10_000, 100_000];
 
@@ -58,7 +57,6 @@ fn bench_build_index(c: &mut Criterion) {
 fn bench_search(c: &mut Criterion) {
     let mut group = c.benchmark_group("ANN Search");
 
-    const DIM: usize = 768;
     let sizes = [1_000, 10_000, 100_000];
 
     for size in sizes {
@@ -71,9 +69,7 @@ fn bench_search(c: &mut Criterion) {
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
-            let query_coords: [f32; DIM] =
-                std::array::from_fn(|_| query_rng.random_range(f32::MIN..=f32::MAX));
-            let query = Vector::new(query_coords);
+            let query = gen_vector::<DIM>(&mut query_rng);
 
             // Benchmark the search
             b.iter(|| {
@@ -93,7 +89,6 @@ fn bench_full_scale(c: &mut Criterion) {
         let mut group = c.benchmark_group("Full Scale ANN (1M vectors)");
         group.sample_size(10); // Use fewer samples due to the long runtime
 
-        const DIM: usize = 768;
         const SIZE: usize = 100_000;
 
         // Benchmark index building
@@ -126,9 +121,7 @@ fn bench_full_scale(c: &mut Criterion) {
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
-            let query_coords: [f32; DIM] =
-                std::array::from_fn(|_| query_rng.random_range(f32::MIN..=f32::MAX));
-            let query = Vector::new(query_coords);
+            let query = gen_vector::<DIM>(&mut query_rng);
 
             // Benchmark the search
             b.iter(|| {

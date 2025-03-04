@@ -12,3 +12,8 @@ criterion = "0.5.1"
 [[bench]]
 name = "ann_benchmark"
 harness = false
+
+
+[profile.bench]
+inherit = ["release"]
+lto = true

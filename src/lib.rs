@@ -7,65 +7,102 @@ use std::{
 use rand::{Rng, rngs::StdRng, seq::IndexedRandom};
 
 #[derive(Debug, Clone)]
-pub struct Vector<const N: usize>([f32; N]);
+pub struct Vector<const N: usize>(Vec<f32>);
 
-impl<const N: usize> Vector<N> {
-    pub fn new(values: [f32; N]) -> Self {
-        Self(values)
+impl<const N: usize> From<[f32; N]> for Vector<N> {
+    fn from(values: [f32; N]) -> Self {
+        Self(values.to_vec())
     }
 }
 
 impl<const N: usize> Hash for Vector<N> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let bits: &[u32; N] = unsafe { std::mem::transmute(&self.0) };
-        bits.hash(state);
+        let bytes: &[u8] =
+            unsafe { std::slice::from_raw_parts(self.0.as_ptr() as *const u8, N * 4) };
+        bytes.hash(state);
     }
 }
 
 impl<const N: usize> PartialEq for Vector<N> {
     // Eq when the underlying memory is the same. Very strict.
     fn eq(&self, other: &Self) -> bool {
-        let self_bits: &[u32; N] = unsafe { std::mem::transmute(&self.0) };
-        let other_bits: &[u32; N] = unsafe { std::mem::transmute(&other.0) };
-        self_bits == other_bits
+        let bytes_left: &[u8] =
+            unsafe { std::slice::from_raw_parts(self.0.as_ptr() as *const u8, N * 4) };
+        let bytes_right: &[u8] =
+            unsafe { std::slice::from_raw_parts(other.0.as_ptr() as *const u8, N * 4) };
+        bytes_left == bytes_right
     }
 }
 
 impl<const N: usize> Eq for Vector<N> {}
 
 impl<const N: usize> Vector<N> {
-    pub fn subtract_from(&self, other: &Vector<N>) -> Vector<N> {
-        let mut coords = [0.0; N];
-        for (v, o) in coords.iter_mut().zip(self.0.iter().zip(other.0.iter())) {
-            *v = o.1 - o.0;
+    /// Try to create a Vector from a Vec<f32>.
+    ///
+    /// # Arguments
+    ///
+    /// * `values` - The vector to create the Vector from, must be of size N.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vector<N>)` - The Vector created from the Vec<f32>.
+    /// * `Err(Vec<f32>)` - The Vec<f32> is not the correct size.
+    pub fn try_from(values: Vec<f32>) -> Result<Self, Vec<f32>> {
+        if values.len() != N {
+            Err(values)
+        } else {
+            Ok(Self(values))
         }
-        Vector::new(coords)
+    }
+
+    pub fn slice(&self) -> &[f32; N] {
+        // Convert the Vec<f32> slice to a fixed-size array reference
+        // This is safe because we know the Vector always has exactly N elements
+        unsafe { &*(self.0.as_ptr() as *const [f32; N]) }
+    }
+
+    pub fn subtract_from(&self, other: &Vector<N>) -> Vector<N> {
+        let vals = self
+            .slice()
+            .iter()
+            .zip(other.slice().iter())
+            .map(|(a, b)| a - b)
+            .collect::<Vec<_>>();
+        Vector(vals)
     }
 
     pub fn add(&self, vector: &Vector<N>) -> Vector<N> {
-        let mut coords = [0.0; N];
-        for (v, o) in coords.iter_mut().zip(self.0.iter().zip(vector.0.iter())) {
-            *v = o.1 + o.0;
-        }
-        Vector::new(coords)
+        let vals = self
+            .slice()
+            .iter()
+            .zip(vector.slice().iter())
+            .map(|(a, b)| a + b)
+            .collect::<Vec<_>>();
+        Vector(vals)
     }
 
     pub fn avg(&self, vector: &Vector<N>) -> Vector<N> {
-        let mut coords = [0.0; N];
-        for (v, o) in coords.iter_mut().zip(self.0.iter().zip(vector.0.iter())) {
-            *v = (o.1 + o.0) / 2.0;
-        }
-        Vector::new(coords)
+        let vals = self
+            .slice()
+            .iter()
+            .zip(vector.slice().iter())
+            .map(|(a, b)| (a + b) / 2.0)
+            .collect::<Vec<_>>();
+        Vector(vals)
     }
 
     pub fn dot_product(&self, vector: &Vector<N>) -> f32 {
-        self.0.iter().zip(vector.0.iter()).map(|(a, b)| a * b).sum()
+        self.slice()
+            .iter()
+            .zip(vector.slice().iter())
+            .map(|(a, b)| a * b)
+            .sum()
     }
 
     pub fn sq_euc_dist(&self, vector: &Vector<N>) -> f32 {
-        self.0
+        self.slice()
             .iter()
-            .zip(vector.0.iter())
+            .zip(vector.slice().iter())
             .map(|(a, b)| (a - b).powi(2))
             .sum()
     }
@@ -94,6 +131,7 @@ struct InnerNode<const N: usize> {
     below: Box<Node<N>>,
 }
 
+
 pub struct ANNIndex<const N: usize> {
     trees: Vec<Node<N>>,
     ids: Vec<i32>,
@@ -111,8 +149,8 @@ impl<const N: usize> ANNIndex<N> {
         let p1 = &all_vectors[*sample_iter.next().unwrap()];
         let p2 = &all_vectors[*sample_iter.next().unwrap()];
 
-        let coefficients = p1.subtract_from(&p2);
-        let point_on_plane = p1.avg(&p2);
+        let coefficients = p1.subtract_from(p2);
+        let point_on_plane = p1.avg(p2);
         let constant = -coefficients.dot_product(&point_on_plane);
         let hyperplane = HyperPlane {
             coefficients,
@@ -153,6 +191,18 @@ impl<const N: usize> ANNIndex<N> {
         }))
     }
 
+    // pub fn memory_usage(&self) -> usize {
+    //     self.trees.iter().map(|tree| tree.memory_usage()).sum()
+    // }
+
+    /// Build the index for the given vectors and ids.
+    ///
+    /// # Arguments
+    ///
+    /// * `num_trees` - The number of trees to build, higher means more accurate but slower and larger memory usage.
+    /// * `max_leaf_size` - The maximum number of vectors in a leaf node, lower means higher accuracy but slower search.
+    /// * `vectors` - The vectors to build the index from.
+    /// * `vec_ids` - The ids of the vectors.
     pub fn build_index(
         num_trees: i32,
         max_leaf_size: i32,
@@ -206,6 +256,12 @@ impl<const N: usize> ANNIndex<N> {
         }
     }
 
+    /// Search for the top_k nearest neighbors of the query vector.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query vector to search for.
+    /// * `top_k` - The number of nearest neighbors to return.
     pub fn search(&self, query: &Vector<N>, top_k: i32) -> Vec<(i32, f32)> {
         let mut candidates = HashSet::new();
         for tree in self.trees.iter() {
@@ -253,12 +309,12 @@ mod tests {
     fn test_basic_nearest_neighbor() {
         let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
         let vectors = vec![
-            Vector::new([10.0, 20.0, 30.0]),
-            Vector::new([10.0, 30.0, 20.0]),
-            Vector::new([20.0, 10.0, 30.0]),
-            Vector::new([20.0, 30.0, 10.0]),
-            Vector::new([30.0, 20.0, 10.0]),
-            Vector::new([30.0, 10.0, 20.0]),
+            Vector::from([10.0, 20.0, 30.0]),
+            Vector::from([10.0, 30.0, 20.0]),
+            Vector::from([20.0, 10.0, 30.0]),
+            Vector::from([20.0, 30.0, 10.0]),
+            Vector::from([30.0, 20.0, 10.0]),
+            Vector::from([30.0, 10.0, 20.0]),
         ];
 
         let ids = vec![1, 2, 3, 4, 5, 6];
@@ -275,7 +331,7 @@ mod tests {
 
         // Query vectors with a small distance should return the closest vector
         for (i, vector) in vectors.iter().enumerate() {
-            let query = vector.add(&Vector::new([0.1, 0.1, 0.1]));
+            let query = vector.add(&Vector::from([0.1, 0.1, 0.1]));
             let results = index.search(&query, 2);
             assert_eq!(results.len(), 2);
             assert_eq!(results[0].0, ids[i]);
@@ -286,12 +342,12 @@ mod tests {
     fn test_top_2_nearest_neighbor() {
         let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
         let vectors = vec![
-            Vector::new([10.0, 20.0, 30.0]),
-            Vector::new([10.0, 20.0, 30.1]),
-            Vector::new([20.0, 30.0, 10.0]),
-            Vector::new([20.0, 30.1, 10.0]),
-            Vector::new([30.0, 20.0, 10.0]),
-            Vector::new([30.1, 20.0, 10.0]),
+            Vector::from([10.0, 20.0, 30.0]),
+            Vector::from([10.0, 20.0, 30.1]),
+            Vector::from([20.0, 30.0, 10.0]),
+            Vector::from([20.0, 30.1, 10.0]),
+            Vector::from([30.0, 20.0, 10.0]),
+            Vector::from([30.1, 20.0, 10.0]),
         ];
 
         let ids = vec![1, 2, 3, 4, 5, 6];
@@ -316,16 +372,16 @@ mod tests {
     fn test_duplicate_vectors() {
         let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
         let vectors = vec![
-            Vector::new([1.0, 1.0, 1.0]),
-            Vector::new([1.0, 1.0, 1.0]), // duplicate of the first vector
-            Vector::new([2.0, 2.0, 2.0]),
+            Vector::from([1.0, 1.0, 1.0]),
+            Vector::from([1.0, 1.0, 1.0]), // duplicate of the first vector
+            Vector::from([2.0, 2.0, 2.0]),
         ];
         let ids = vec![10, 20, 30];
 
         let index = ANNIndex::build_index(5, 1, &vectors, &ids, &mut seed_rng);
 
         // Query exactly at the duplicate value.
-        let query = Vector::new([1.0, 1.0, 1.0]);
+        let query = Vector::from([1.0, 1.0, 1.0]);
         let top_k = 3;
         let results = index.search(&query, top_k);
 
@@ -350,11 +406,11 @@ mod tests {
     fn test_top_k_exceeds_total_and_high_dim() {
         // Create five 4D vectors.
         let vectors = vec![
-            Vector::new([0.0, 0.0, 0.0, 0.0]),
-            Vector::new([1.0, 0.0, 0.0, 0.0]),
-            Vector::new([0.0, 1.0, 0.0, 0.0]),
-            Vector::new([0.0, 0.0, 1.0, 0.0]),
-            Vector::new([0.0, 0.0, 0.0, 1.0]),
+            Vector::from([0.0, 0.0, 0.0, 0.0]),
+            Vector::from([1.0, 0.0, 0.0, 0.0]),
+            Vector::from([0.0, 1.0, 0.0, 0.0]),
+            Vector::from([0.0, 0.0, 1.0, 0.0]),
+            Vector::from([0.0, 0.0, 0.0, 1.0]),
         ];
         let ids = vec![100, 200, 300, 400, 500];
 
@@ -363,7 +419,7 @@ mod tests {
         let index = ANNIndex::build_index(3, 2, &vectors, &ids, &mut seed_rng);
 
         // Query with a vector that lies equidistant from all the given vectors.
-        let query = Vector::new([0.5, 0.5, 0.5, 0.5]);
+        let query = Vector::from([0.5, 0.5, 0.5, 0.5]);
         let top_k = 10; // Request more neighbors than there are unique vectors.
         let results = index.search(&query, top_k);
 
