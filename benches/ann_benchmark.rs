@@ -9,12 +9,12 @@ fn gen_vector<const N: usize>(rng: &mut StdRng) -> Vector<N> {
 }
 
 // Utility function to generate random vectors
-fn generate_random_vectors<const N: usize>(count: usize, seed: u64) -> (Vec<Vector<N>>, Vec<i32>) {
+fn generate_random_vectors<const N: usize>(count: usize, seed: u64) -> (Vec<Vector<N>>, Vec<u32>) {
     let mut rng = StdRng::seed_from_u64(seed);
 
     let vectors: Vec<Vector<N>> = (0..count).map(|_| gen_vector(&mut rng)).collect();
 
-    let ids: Vec<i32> = (0..count as i32).collect();
+    let ids: Vec<u32> = (0..count as u32).collect();
 
     (vectors, ids)
 }
@@ -38,7 +38,7 @@ fn bench_build_index(c: &mut Criterion) {
                 },
                 |(vectors, ids)| {
                     let mut seed_rng = StdRng::seed_from_u64(42);
-                    black_box(ANNIndex::build_index(
+                    black_box(ANNIndex::build(
                         NUM_TREES,
                         MAX_LEAF_SIZE,
                         &vectors,
@@ -64,8 +64,7 @@ fn bench_search(c: &mut Criterion) {
             // Setup: Build the index once
             let (vectors, ids) = generate_random_vectors::<DIM>(size, 42);
             let mut seed_rng = StdRng::seed_from_u64(42);
-            let index =
-                ANNIndex::build_index(NUM_TREES, MAX_LEAF_SIZE, &vectors, &ids, &mut seed_rng);
+            let index = ANNIndex::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &ids, &mut seed_rng);
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
@@ -100,7 +99,7 @@ fn bench_full_scale(c: &mut Criterion) {
                 },
                 |(vectors, ids)| {
                     let mut seed_rng = StdRng::seed_from_u64(42);
-                    black_box(ANNIndex::build_index(
+                    black_box(ANNIndex::build(
                         NUM_TREES,
                         MAX_LEAF_SIZE,
                         &vectors,
@@ -116,8 +115,7 @@ fn bench_full_scale(c: &mut Criterion) {
             // Setup: Build the index once
             let (vectors, ids) = generate_random_vectors::<DIM>(SIZE, 42);
             let mut seed_rng = StdRng::seed_from_u64(42);
-            let index =
-                ANNIndex::build_index(NUM_TREES, MAX_LEAF_SIZE, &vectors, &ids, &mut seed_rng);
+            let index = ANNIndex::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &ids, &mut seed_rng);
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);

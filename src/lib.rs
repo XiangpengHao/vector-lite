@@ -1,10 +1,10 @@
 use std::{
-    cmp::min,
     collections::HashSet,
     hash::{Hash, Hasher},
 };
-
-use rand::{Rng, rngs::StdRng, seq::IndexedRandom};
+mod node;
+use node::Node;
+use rand::Rng;
 
 #[derive(Debug, Clone)]
 pub struct Vector<const N: usize>(Vec<f32>);
@@ -108,180 +108,7 @@ impl<const N: usize> Vector<N> {
     }
 }
 
-struct HyperPlane<const N: usize> {
-    coefficients: Vector<N>,
-    constant: f32,
-}
-
-impl<const N: usize> HyperPlane<N> {
-    pub fn point_is_above(&self, point: &Vector<N>) -> bool {
-        self.coefficients.dot_product(point) + self.constant >= 0.0
-    }
-}
-
-enum Node<const N: usize> {
-    Inner(Box<InnerNode<N>>),
-    Leaf(Box<LeafNode<N>>),
-}
-struct LeafNode<const N: usize>(Vec<usize>);
-
-struct InnerNode<const N: usize> {
-    hyperplane: HyperPlane<N>,
-    above: Box<Node<N>>,
-    below: Box<Node<N>>,
-}
-
-
-pub struct ANNIndex<const N: usize> {
-    trees: Vec<Node<N>>,
-    ids: Vec<i32>,
-    values: Vec<Vector<N>>,
-}
-
-impl<const N: usize> ANNIndex<N> {
-    fn build_hyperplane<R: Rng>(
-        indexes: &[usize],
-        all_vectors: &[Vector<N>],
-        rng: &mut R,
-    ) -> (HyperPlane<N>, Vec<usize>, Vec<usize>) {
-        let mut sample_iter = indexes.choose_multiple(rng, 2);
-
-        let p1 = &all_vectors[*sample_iter.next().unwrap()];
-        let p2 = &all_vectors[*sample_iter.next().unwrap()];
-
-        let coefficients = p1.subtract_from(p2);
-        let point_on_plane = p1.avg(p2);
-        let constant = -coefficients.dot_product(&point_on_plane);
-        let hyperplane = HyperPlane {
-            coefficients,
-            constant,
-        };
-
-        let mut above = Vec::new();
-        let mut below = Vec::new();
-        for &id in indexes.iter() {
-            if hyperplane.point_is_above(&all_vectors[id]) {
-                above.push(id);
-            } else {
-                below.push(id);
-            }
-        }
-
-        (hyperplane, above, below)
-    }
-
-    fn build_a_tree(
-        max_size: i32,
-        indexes: &[usize],
-        all_vectors: &[Vector<N>],
-        rng: &mut StdRng,
-    ) -> Node<N> {
-        if indexes.len() <= max_size as usize {
-            return Node::Leaf(Box::new(LeafNode(indexes.to_owned())));
-        }
-
-        let (hyperplane, above, below) = Self::build_hyperplane(indexes, all_vectors, rng);
-        let node_above = Self::build_a_tree(max_size, &above, all_vectors, rng);
-        let node_below = Self::build_a_tree(max_size, &below, all_vectors, rng);
-
-        Node::Inner(Box::new(InnerNode {
-            hyperplane,
-            above: Box::new(node_above),
-            below: Box::new(node_below),
-        }))
-    }
-
-    // pub fn memory_usage(&self) -> usize {
-    //     self.trees.iter().map(|tree| tree.memory_usage()).sum()
-    // }
-
-    /// Build the index for the given vectors and ids.
-    ///
-    /// # Arguments
-    ///
-    /// * `num_trees` - The number of trees to build, higher means more accurate but slower and larger memory usage.
-    /// * `max_leaf_size` - The maximum number of vectors in a leaf node, lower means higher accuracy but slower search.
-    /// * `vectors` - The vectors to build the index from.
-    /// * `vec_ids` - The ids of the vectors.
-    pub fn build_index(
-        num_trees: i32,
-        max_leaf_size: i32,
-        vectors: &[Vector<N>],
-        vec_ids: &[i32],
-        rng: &mut StdRng,
-    ) -> Self {
-        debug_assert!(vectors.len() == vec_ids.len());
-        let (unique_vector, ids) = deduplicate(vectors, vec_ids);
-
-        let all_indexes: Vec<usize> = (0..unique_vector.len()).collect();
-
-        let trees: Vec<_> = (0..num_trees)
-            .map(|_| Self::build_a_tree(max_leaf_size, &all_indexes, &unique_vector, rng))
-            .collect();
-
-        Self {
-            trees,
-            ids,
-            values: unique_vector,
-        }
-    }
-
-    fn tree_result(
-        query: &Vector<N>,
-        n: i32,
-        tree: &Node<N>,
-        candidates: &mut HashSet<usize>,
-    ) -> i32 {
-        match tree {
-            Node::Leaf(leaf) => {
-                let leaf_values = &(leaf.0);
-                let num_candidates_found = min(n as usize, leaf_values.len());
-                for value in leaf_values.iter().take(num_candidates_found) {
-                    candidates.insert(*value);
-                }
-                num_candidates_found as i32
-            }
-            Node::Inner(inner) => {
-                let above = inner.hyperplane.point_is_above(query);
-                let (main, backup) = match above {
-                    true => (&inner.above, &inner.below),
-                    false => (&inner.below, &inner.above),
-                };
-
-                match Self::tree_result(query, n, main, candidates) {
-                    k if k < n => k + Self::tree_result(query, n - k, backup, candidates),
-                    k => k,
-                }
-            }
-        }
-    }
-
-    /// Search for the top_k nearest neighbors of the query vector.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - The query vector to search for.
-    /// * `top_k` - The number of nearest neighbors to return.
-    pub fn search(&self, query: &Vector<N>, top_k: i32) -> Vec<(i32, f32)> {
-        let mut candidates = HashSet::new();
-        for tree in self.trees.iter() {
-            Self::tree_result(query, top_k, tree, &mut candidates);
-        }
-
-        let mut results = candidates
-            .into_iter()
-            .map(|idx| (idx, self.values[idx].sq_euc_dist(query)))
-            .collect::<Vec<_>>();
-        results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        results
-            .into_iter()
-            .take(top_k as usize)
-            .map(|(idx, dis)| (self.ids[idx], dis))
-            .collect()
-    }
-}
-
-fn deduplicate<const N: usize>(vectors: &[Vector<N>], ids: &[i32]) -> (Vec<Vector<N>>, Vec<i32>) {
+fn deduplicate<const N: usize>(vectors: &[Vector<N>], ids: &[u32]) -> (Vec<Vector<N>>, Vec<u32>) {
     debug_assert!(vectors.len() == ids.len());
     let mut hashes_seen = HashSet::new();
     let mut dedup_vectors = Vec::new();
@@ -297,8 +124,73 @@ fn deduplicate<const N: usize>(vectors: &[Vector<N>], ids: &[i32]) -> (Vec<Vecto
     (dedup_vectors, dedup_ids)
 }
 
+pub struct ANNIndex<const N: usize> {
+    trees: Vec<Node<N>>,
+    ids: Vec<u32>,
+    values: Vec<Vector<N>>,
+}
+
+impl<const N: usize> ANNIndex<N> {
+    /// Build the index for the given vectors and ids.
+    ///
+    /// # Arguments
+    ///
+    /// * `num_trees` - The number of trees to build, higher means more accurate but slower and larger memory usage.
+    /// * `max_leaf_size` - The maximum number of vectors in a leaf node, lower means higher accuracy but slower search.
+    /// * `vectors` - The vectors to build the index from.
+    /// * `vec_ids` - The ids of the vectors.
+    pub fn build<R: Rng>(
+        num_trees: i32,
+        max_leaf_size: i32,
+        vectors: &[Vector<N>],
+        vec_ids: &[u32],
+        rng: &mut R,
+    ) -> Self {
+        debug_assert!(vectors.len() == vec_ids.len());
+        let (unique_vector, ids) = deduplicate(vectors, vec_ids);
+
+        let all_indexes: Vec<usize> = (0..unique_vector.len()).collect();
+
+        let trees: Vec<_> = (0..num_trees)
+            .map(|_| Node::build_tree(max_leaf_size, &all_indexes, &unique_vector, rng))
+            .collect();
+
+        Self {
+            trees,
+            ids,
+            values: unique_vector,
+        }
+    }
+
+    /// Search for the top_k nearest neighbors of the query vector.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query vector to search for.
+    /// * `top_k` - The number of nearest neighbors to return.
+    pub fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(u32, f32)> {
+        let mut candidates = HashSet::new();
+        for tree in self.trees.iter() {
+            tree.search(query, top_k, &mut candidates);
+        }
+
+        let mut results = candidates
+            .into_iter()
+            .map(|idx| (idx, self.values[idx].sq_euc_dist(query)))
+            .collect::<Vec<_>>();
+        results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        results
+            .into_iter()
+            .take(top_k as usize)
+            .map(|(idx, dis)| (self.ids[idx], dis))
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use rand::{SeedableRng, rngs::StdRng};
+
     use super::*;
     // A small helper for approximate float equality.
     fn approx_eq(a: f32, b: f32, tol: f32) -> bool {
@@ -307,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_basic_nearest_neighbor() {
-        let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
+        let mut seed_rng = StdRng::seed_from_u64(42);
         let vectors = vec![
             Vector::from([10.0, 20.0, 30.0]),
             Vector::from([10.0, 30.0, 20.0]),
@@ -320,7 +212,7 @@ mod tests {
         let ids = vec![1, 2, 3, 4, 5, 6];
 
         // Build the index with 1 trees and leaf max_size of 1, this will result in exact matches
-        let index = ANNIndex::build_index(1, 1, &vectors, &ids, &mut seed_rng);
+        let index = ANNIndex::build(1, 1, &vectors, &ids, &mut seed_rng);
 
         // Query vectors itself should return exact matches
         for (i, vector) in vectors.iter().enumerate() {
@@ -340,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_top_2_nearest_neighbor() {
-        let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
+        let mut seed_rng = StdRng::seed_from_u64(42);
         let vectors = vec![
             Vector::from([10.0, 20.0, 30.0]),
             Vector::from([10.0, 20.0, 30.1]),
@@ -353,7 +245,7 @@ mod tests {
         let ids = vec![1, 2, 3, 4, 5, 6];
 
         // Build the index with 1 trees and leaf max_size of 1, this will result in exact matches
-        let index = ANNIndex::build_index(1, 2, &vectors, &ids, &mut seed_rng);
+        let index = ANNIndex::build(1, 2, &vectors, &ids, &mut seed_rng);
 
         // Query vectors itself should return exact matches
         for (i, vector) in vectors.iter().enumerate() {
@@ -370,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_vectors() {
-        let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
+        let mut seed_rng = StdRng::seed_from_u64(42);
         let vectors = vec![
             Vector::from([1.0, 1.0, 1.0]),
             Vector::from([1.0, 1.0, 1.0]), // duplicate of the first vector
@@ -378,7 +270,7 @@ mod tests {
         ];
         let ids = vec![10, 20, 30];
 
-        let index = ANNIndex::build_index(5, 1, &vectors, &ids, &mut seed_rng);
+        let index = ANNIndex::build(5, 1, &vectors, &ids, &mut seed_rng);
 
         // Query exactly at the duplicate value.
         let query = Vector::from([1.0, 1.0, 1.0]);
@@ -415,8 +307,8 @@ mod tests {
         let ids = vec![100, 200, 300, 400, 500];
 
         // Build the index with 3 trees and a max_size of 2.
-        let mut seed_rng = rand::SeedableRng::seed_from_u64(42);
-        let index = ANNIndex::build_index(3, 2, &vectors, &ids, &mut seed_rng);
+        let mut seed_rng = StdRng::seed_from_u64(42);
+        let index = ANNIndex::build(3, 2, &vectors, &ids, &mut seed_rng);
 
         // Query with a vector that lies equidistant from all the given vectors.
         let query = Vector::from([0.5, 0.5, 0.5, 0.5]);
