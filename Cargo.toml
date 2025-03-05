@@ -1,10 +1,12 @@
 [package]
 name = "vector-lite"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "The SQLite of Vector Database in Rust."
 authors = ["Xiangpeng Hao <haoxiangpeng123@gmail.com>"]
 license = "Apache-2.0"
+repository = "https://github.com/XiangpengHao/vector-lite"
+documentation = "https://docs.rs/vector-lite/latest/vector_lite/"
 
 [dependencies]
 rand = "0.9.0"

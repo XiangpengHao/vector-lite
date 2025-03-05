@@ -1,5 +1,7 @@
 # VectorLite
 [![Rust CI](https://github.com/XiangpengHao/vector-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/XiangpengHao/vector-lite/actions/workflows/ci.yml)
+[![Crates.io Version](https://img.shields.io/crates/v/vector-lite)](https://crates.io/crates/vector-lite)
+[![docs.rs](https://img.shields.io/docsrs/vector-lite)](https://docs.rs/vector-lite/latest/vector_lite/)
 
 The SQLite of Vector Database in Rust.
 
