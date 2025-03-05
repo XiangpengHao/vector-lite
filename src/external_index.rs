@@ -47,9 +47,9 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LshExternal<'a, N> {
         }
 
         let all_indexes: Vec<u32> = (0..vectors.len() as u32).collect();
-
+        let vector_fn = |idx: u32| &vectors[idx as usize];
         let trees: Vec<_> = (0..num_trees)
-            .map(|_| Node::build_tree(max_leaf_size, &all_indexes, vectors, rng))
+            .map(|_| Node::build_tree(max_leaf_size, &all_indexes, &vector_fn, rng))
             .collect();
 
         Ok(Self {
@@ -152,7 +152,7 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LinearSearchExternal<'a, N>
 
         impl PartialOrd for Entry {
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-                Some(self.cmp(other))
+                self.0.partial_cmp(&other.0)
             }
         }
 

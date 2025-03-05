@@ -32,9 +32,10 @@ impl<const N: usize> ANNIndexOwned<N> for LshOwned<N> {
     fn insert(&mut self, vector: Vector<N>, id: usize, rng: &mut impl Rng) {
         self.vectors.push(vector);
         self.ids.push(id);
+        let vector_fn = |idx: u32| &self.vectors[idx as usize];
         for tree in &mut self.trees {
             tree.insert(
-                &self.vectors,
+                &vector_fn,
                 self.vectors.len() as u32 - 1,
                 rng,
                 self.max_leaf_size,
@@ -43,8 +44,9 @@ impl<const N: usize> ANNIndexOwned<N> for LshOwned<N> {
     }
 
     fn delete(&mut self, id: usize) {
+        let vector_fn = |idx: u32| &self.vectors[idx as usize];
         for tree in &mut self.trees {
-            tree.delete(&self.vectors, id as u32);
+            tree.delete(&vector_fn, id as u32);
         }
         // TODO: also remove from vectors and ids.
     }
