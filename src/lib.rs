@@ -4,3 +4,5 @@ mod external_index;
 pub use external_index::{ANNIndexExternal, LinearSearchExternal, LshExternal};
 mod vector;
 pub use vector::Vector;
+mod owned_index;
+pub use owned_index::{ANNIndexOwned, LshOwned};

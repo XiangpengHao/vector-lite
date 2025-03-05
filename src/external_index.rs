@@ -34,8 +34,8 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LshExternal<'a, N> {
     type Index = Self;
 
     fn build<R: Rng>(
-        num_trees: i32,
-        max_leaf_size: i32,
+        num_trees: usize,
+        max_leaf_size: usize,
         vectors: &'a [Vector<N>],
         rng: &mut R,
     ) -> Result<Self::Index, &'static str> {
@@ -83,8 +83,8 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LshExternal<'a, N> {
     }
 }
 
-/// A trait for ANNIndex that can be built from external data.
-/// The index itself does not hold any data, it only points to the external data.
+/// A trait for ANNIndex that references external data.
+/// The index is read-only once built.
 pub trait ANNIndexExternal<'a, const N: usize> {
     type Index;
 
@@ -96,8 +96,8 @@ pub trait ANNIndexExternal<'a, const N: usize> {
     /// * `max_leaf_size` - The maximum number of vectors in a leaf node, lower means higher accuracy but slower search.
     /// * `vectors` - The vectors to build the index from.
     fn build<R: Rng>(
-        num_trees: i32,
-        max_leaf_size: i32,
+        num_trees: usize,
+        max_leaf_size: usize,
         vectors: &'a [Vector<N>],
         rng: &mut R,
     ) -> Result<Self::Index, &'static str>;
@@ -129,8 +129,8 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LinearSearchExternal<'a, N>
     type Index = Self;
 
     fn build<R: Rng>(
-        _num_trees: i32,
-        _max_leaf_size: i32,
+        _num_trees: usize,
+        _max_leaf_size: usize,
         vectors: &'a [Vector<N>],
         _rng: &mut R,
     ) -> Result<Self::Index, &'static str> {

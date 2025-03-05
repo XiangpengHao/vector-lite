@@ -18,8 +18,8 @@ fn generate_random_vectors<const N: usize>(count: usize, seed: u64) -> Vec<Vecto
 }
 
 const DIM: usize = 768;
-const MAX_LEAF_SIZE: i32 = 15;
-const NUM_TREES: i32 = 3;
+const MAX_LEAF_SIZE: usize = 15;
+const NUM_TREES: usize = 3;
 
 // Benchmark for building index
 fn bench_build_index(c: &mut Criterion) {
@@ -34,7 +34,8 @@ fn bench_build_index(c: &mut Criterion) {
                 |vectors| {
                     let mut seed_rng = StdRng::seed_from_u64(42);
                     black_box(
-                        LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap(),
+                        LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng)
+                            .unwrap(),
                     );
                 },
             );
@@ -55,7 +56,8 @@ fn bench_search(c: &mut Criterion) {
             // Setup: Build the index once
             let vectors = generate_random_vectors::<DIM>(size, 42);
             let mut seed_rng = StdRng::seed_from_u64(42);
-            let index = LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
+            let index =
+                LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
@@ -83,7 +85,8 @@ fn bench_linear_search(c: &mut Criterion) {
             let vectors = generate_random_vectors::<DIM>(size, 42);
             let mut seed_rng = StdRng::seed_from_u64(42);
             let index =
-                LinearSearchExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
+                LinearSearchExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng)
+                    .unwrap();
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
