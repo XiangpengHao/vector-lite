@@ -216,8 +216,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43a49c392881ce6d5c3b8cb70f98717b7c07aabbdff06687b9030dbfbe2725f8"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
  "windows-targets",
 ]
 
@@ -603,10 +605,11 @@ checksum = "5a5f39404a5da50712a4c1eecf25e90dd62b613502b7e925fd4e4d19b5c96512"
 
 [[package]]
 name = "vector-lite"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "criterion",
  "flexbuffers",
+ "getrandom",
  "rand",
  "serde",
 ]
