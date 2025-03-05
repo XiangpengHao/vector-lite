@@ -153,12 +153,14 @@ impl<'a, const N: usize> ANNLsh<'a, N> {
 }
 
 impl<'a, const N: usize> ANNIndex<'a, N> for ANNLsh<'a, N> {
+    type Index = Self;
+
     fn build<R: Rng>(
         num_trees: i32,
         max_leaf_size: i32,
         vectors: &'a [Vector<N>],
         rng: &mut R,
-    ) -> Result<Box<Self>, &'static str> {
+    ) -> Result<Self::Index, &'static str> {
         if !check_unique(vectors) {
             return Err("Vectors are not unique");
         }
@@ -172,10 +174,10 @@ impl<'a, const N: usize> ANNIndex<'a, N> for ANNLsh<'a, N> {
             .map(|_| Node::build_tree(max_leaf_size, &all_indexes, vectors, rng))
             .collect();
 
-        Ok(Box::new(Self {
+        Ok(Self {
             trees,
             values: vectors,
-        }))
+        })
     }
 
     fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(usize, f32)> {
@@ -208,6 +210,8 @@ impl<'a, const N: usize> ANNIndex<'a, N> for ANNLsh<'a, N> {
 }
 
 pub trait ANNIndex<'a, const N: usize> {
+    type Index;
+
     /// Build the index for the given vectors and ids.
     ///
     /// # Arguments
@@ -220,7 +224,7 @@ pub trait ANNIndex<'a, const N: usize> {
         max_leaf_size: i32,
         vectors: &'a [Vector<N>],
         rng: &mut R,
-    ) -> Result<Box<Self>, &'static str>;
+    ) -> Result<Self::Index, &'static str>;
 
     /// Search for the top_k nearest neighbors of the query vector.
     ///
@@ -258,17 +262,19 @@ impl<'a, const N: usize> ANNLinearSearch<'a, N> {
 }
 
 impl<'a, const N: usize> ANNIndex<'a, N> for ANNLinearSearch<'a, N> {
+    type Index = Self;
+
     fn build<R: Rng>(
         _num_trees: i32,
         _max_leaf_size: i32,
         vectors: &'a [Vector<N>],
         _rng: &mut R,
-    ) -> Result<Box<Self>, &'static str> {
+    ) -> Result<Self::Index, &'static str> {
         if vectors.is_empty() {
             return Err("Cannot build index with empty vector set");
         }
 
-        Ok(Box::new(ANNLinearSearch { values: vectors }))
+        Ok(Self { values: vectors })
     }
 
     fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(usize, f32)> {
