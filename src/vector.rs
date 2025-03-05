@@ -45,7 +45,7 @@ impl<const N: usize> Vector<N> {
     /// # Examples
     ///
     /// ```rust
-    /// use vector_search::Vector;
+    /// use vector_lite::Vector;
     /// let vec = vec![1.0, 2.0, 3.0];
     /// let vector: Vector<3> = Vector::try_from(vec).unwrap();
     /// assert_eq!(vector.into_inner(), vec![1.0, 2.0, 3.0]);

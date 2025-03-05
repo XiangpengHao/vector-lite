@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use vector_search::{ANNIndexExternal, LinearSearchExternal, LshExternal, Vector};
+use vector_lite::{ANNIndexExternal, LinearSearchExternal, LshExternal, Vector};
 
 fn gen_vector<const N: usize>(rng: &mut StdRng) -> Vector<N> {
     let coords: [f32; N] = std::array::from_fn(|_| rng.random_range(-1.0..1.0));
