@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use vector_search::{ANNIndex, ANNLinearSearch, ANNLsh, Vector};
+use vector_search::{ANNIndexExternal, LinearSearchExternal, LshExternal, Vector};
 
 fn gen_vector<const N: usize>(rng: &mut StdRng) -> Vector<N> {
     let coords: [f32; N] = std::array::from_fn(|_| rng.random_range(-1.0..1.0));
@@ -34,7 +34,7 @@ fn bench_build_index(c: &mut Criterion) {
                 |vectors| {
                     let mut seed_rng = StdRng::seed_from_u64(42);
                     black_box(
-                        ANNLsh::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap(),
+                        LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap(),
                     );
                 },
             );
@@ -55,7 +55,7 @@ fn bench_search(c: &mut Criterion) {
             // Setup: Build the index once
             let vectors = generate_random_vectors::<DIM>(size, 42);
             let mut seed_rng = StdRng::seed_from_u64(42);
-            let index = ANNLsh::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
+            let index = LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
@@ -83,7 +83,7 @@ fn bench_linear_search(c: &mut Criterion) {
             let vectors = generate_random_vectors::<DIM>(size, 42);
             let mut seed_rng = StdRng::seed_from_u64(42);
             let index =
-                ANNLinearSearch::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
+                LinearSearchExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);

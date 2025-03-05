@@ -72,7 +72,7 @@ impl<const N: usize> Node<N> {
         match self {
             Node::Leaf(leaf) => {
                 let leaf_values = &(leaf.0);
-                let num_candidates_found = min(n as usize, leaf_values.len());
+                let num_candidates_found = min(n, leaf_values.len());
                 for value in leaf_values.iter().take(num_candidates_found) {
                     candidates.insert(*value);
                 }
