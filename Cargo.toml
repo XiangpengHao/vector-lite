@@ -15,5 +15,4 @@ harness = false
 
 
 [profile.bench]
-inherit = ["release"]
 lto = true

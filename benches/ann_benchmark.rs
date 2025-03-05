@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use vector_search::{ANNIndex, Vector};
+use vector_search::{ANNIndex, ANNLinearSearch, ANNLsh, Vector};
 
 fn gen_vector<const N: usize>(rng: &mut StdRng) -> Vector<N> {
     let coords: [f32; N] = std::array::from_fn(|_| rng.random_range(-1.0..1.0));
@@ -33,12 +33,9 @@ fn bench_build_index(c: &mut Criterion) {
                 || generate_random_vectors::<DIM>(size, 42),
                 |vectors| {
                     let mut seed_rng = StdRng::seed_from_u64(42);
-                    black_box(ANNIndex::build(
-                        NUM_TREES,
-                        MAX_LEAF_SIZE,
-                        &vectors,
-                        &mut seed_rng,
-                    ));
+                    black_box(
+                        ANNLsh::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap(),
+                    );
                 },
             );
         });
@@ -58,7 +55,7 @@ fn bench_search(c: &mut Criterion) {
             // Setup: Build the index once
             let vectors = generate_random_vectors::<DIM>(size, 42);
             let mut seed_rng = StdRng::seed_from_u64(42);
-            let index = ANNIndex::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng);
+            let index = ANNLsh::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
@@ -74,38 +71,19 @@ fn bench_search(c: &mut Criterion) {
     group.finish();
 }
 
-// Function for running the full-scale benchmark (1M vectors)
-// Warning: This might take a long time to run
-fn bench_full_scale(c: &mut Criterion) {
-    // Only run this benchmark when explicitly requested
-    if std::env::var("RUN_FULL_SCALE").is_ok() {
-        let mut group = c.benchmark_group("Full Scale ANN (1M vectors)");
-        group.sample_size(10); // Use fewer samples due to the long runtime
+// Benchmark for searching
+fn bench_linear_search(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ANN Linear Search");
 
-        const SIZE: usize = 100_000;
+    let sizes = [1_000, 10_000, 100_000];
 
-        // Benchmark index building
-        group.bench_function("Build Index", |b| {
-            b.iter_with_setup(
-                || generate_random_vectors::<DIM>(SIZE, 42),
-                |vectors| {
-                    let mut seed_rng = StdRng::seed_from_u64(42);
-                    black_box(ANNIndex::build(
-                        NUM_TREES,
-                        MAX_LEAF_SIZE,
-                        &vectors,
-                        &mut seed_rng,
-                    ));
-                },
-            );
-        });
-
-        // Benchmark search (after building the index once)
-        group.bench_function("Search Top 20", |b| {
+    for size in sizes {
+        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             // Setup: Build the index once
-            let vectors = generate_random_vectors::<DIM>(SIZE, 42);
+            let vectors = generate_random_vectors::<DIM>(size, 42);
             let mut seed_rng = StdRng::seed_from_u64(42);
-            let index = ANNIndex::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng);
+            let index =
+                ANNLinearSearch::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
@@ -116,10 +94,15 @@ fn bench_full_scale(c: &mut Criterion) {
                 black_box(index.search(&query, 20));
             });
         });
-
-        group.finish();
     }
+
+    group.finish();
 }
 
-criterion_group!(benches, bench_build_index, bench_search, bench_full_scale);
+criterion_group!(
+    benches,
+    bench_build_index,
+    bench_search,
+    bench_linear_search
+);
 criterion_main!(benches);
