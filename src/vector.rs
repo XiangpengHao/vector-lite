@@ -1,6 +1,8 @@
 use std::hash::{Hash, Hasher};
 
-#[derive(Debug, Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vector<const N: usize>(Vec<f32>);
 
 impl<const N: usize> From<[f32; N]> for Vector<N> {

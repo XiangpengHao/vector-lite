@@ -1,8 +1,7 @@
-use std::collections::HashSet;
-
-use rand::Rng;
-
 use crate::{Node, Vector};
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 pub trait ANNIndexOwned<const N: usize> {
     /// Insert a vector into the index.
@@ -21,6 +20,7 @@ pub trait ANNIndexOwned<const N: usize> {
 }
 
 /// A lightweight lsh-based ann index.
+#[derive(Serialize, Deserialize)]
 pub struct VectorLite<const N: usize> {
     vectors: Vec<Vector<N>>,
     ids: Vec<usize>,
@@ -39,6 +39,18 @@ impl<const N: usize> VectorLite<N> {
             trees: (0..num_trees).map(|_| Node::new_empty()).collect(),
             max_leaf_size,
         }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut s = flexbuffers::FlexbufferSerializer::new();
+        self.serialize(&mut s).unwrap();
+        s.take_buffer()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let s = flexbuffers::Reader::get_root(bytes).unwrap();
+        let index: Self = VectorLite::deserialize(s).unwrap();
+        index
     }
 }
 
@@ -190,6 +202,32 @@ mod tests {
         let results = index.search(&Vector::from([5.0, 5.0]), 3);
         for result in results {
             assert!(result.0 != 4 && result.0 != 5 && result.0 != 6);
+        }
+    }
+
+    #[test]
+    fn test_file_operations() {
+        // Create a new index
+        let mut index = VectorLite::<3>::new(2, 2);
+        let mut rng = create_test_rng();
+
+        // Insert some test vectors
+        index.insert_with_rng(Vector::from([1.0, 0.0, 0.0]), 101, &mut rng);
+        index.insert_with_rng(Vector::from([0.0, 1.0, 0.0]), 102, &mut rng);
+        index.insert_with_rng(Vector::from([0.0, 0.0, 1.0]), 103, &mut rng);
+
+        let serialized = index.to_bytes();
+        let loaded_index = VectorLite::<3>::from_bytes(&serialized);
+
+        // Verify search results match
+        let query = Vector::from([0.9, 0.1, 0.0]);
+        let original_results = index.search(&query, 2);
+        let loaded_results = loaded_index.search(&query, 2);
+
+        assert_eq!(original_results.len(), loaded_results.len());
+        for i in 0..original_results.len() {
+            assert_eq!(original_results[i].0, loaded_results[i].0);
+            assert!((original_results[i].1 - loaded_results[i].1).abs() < 1e-6);
         }
     }
 }

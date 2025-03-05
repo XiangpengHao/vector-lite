@@ -3,7 +3,7 @@ The SQLite of Vector Database in Rust.
 
 ## Features
 - [x] Compact size
-- [ ] Zero-copy de/serialization from/to disk 
+- [x] Zero-copy de/serialization from/to disk 
 - [ ] Concurrent insert/delete/search
 - [x] Excellent search performance
 - [x] WASM support
@@ -29,6 +29,10 @@ for (id, distance) in results {
 }
 
 index.delete_by_id(102);
+
+// De/serialize to/from disk
+let serialized = index.to_bytes();
+let loaded_index = VectorLite::<DIM>::from_bytes(&serialized);
 ```
 
 ## Benchmark
