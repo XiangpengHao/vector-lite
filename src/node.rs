@@ -116,7 +116,7 @@ impl<const N: usize> Node<N> {
         match self {
             Node::Leaf(leaf) => {
                 leaf.0.retain(|&id| id != vector_idx);
-                leaf.0.len() == 0
+                leaf.0.is_empty()
             }
             Node::Inner(inner) => {
                 let is_above = inner.hyperplane.point_is_above(vector_accessor(vector_idx));

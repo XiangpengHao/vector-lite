@@ -150,6 +150,7 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LinearSearchExternal<'a, N>
         #[derive(PartialEq)]
         struct Entry(f32, usize);
 
+        #[allow(clippy::non_canonical_partial_ord_impl)]
         impl PartialOrd for Entry {
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                 self.0.partial_cmp(&other.0)
