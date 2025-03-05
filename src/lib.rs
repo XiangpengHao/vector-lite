@@ -108,29 +108,22 @@ impl<const N: usize> Vector<N> {
     }
 }
 
-fn deduplicate<const N: usize>(vectors: &[Vector<N>], ids: &[u32]) -> (Vec<Vector<N>>, Vec<u32>) {
-    debug_assert!(vectors.len() == ids.len());
+fn check_unique<const N: usize>(vectors: &[Vector<N>]) -> bool {
     let mut hashes_seen = HashSet::new();
-    let mut dedup_vectors = Vec::new();
-    let mut dedup_ids = Vec::new();
-    for (vector, id) in vectors.iter().zip(ids.iter()) {
-        if !hashes_seen.contains(&vector) {
-            hashes_seen.insert(vector);
-            dedup_vectors.push(vector.clone());
-            dedup_ids.push(*id);
+    for vector in vectors.iter() {
+        if !hashes_seen.insert(vector) {
+            return false;
         }
     }
-
-    (dedup_vectors, dedup_ids)
+    true
 }
 
-pub struct ANNIndex<const N: usize> {
+pub struct ANNIndex<'a, const N: usize> {
     trees: Vec<Node<N>>,
-    ids: Vec<u32>,
-    values: Vec<Vector<N>>,
+    values: &'a [Vector<N>],
 }
 
-impl<const N: usize> ANNIndex<N> {
+impl<'a, const N: usize> ANNIndex<'a, N> {
     /// Build the index for the given vectors and ids.
     ///
     /// # Arguments
@@ -138,27 +131,23 @@ impl<const N: usize> ANNIndex<N> {
     /// * `num_trees` - The number of trees to build, higher means more accurate but slower and larger memory usage.
     /// * `max_leaf_size` - The maximum number of vectors in a leaf node, lower means higher accuracy but slower search.
     /// * `vectors` - The vectors to build the index from.
-    /// * `vec_ids` - The ids of the vectors.
     pub fn build<R: Rng>(
         num_trees: i32,
         max_leaf_size: i32,
-        vectors: &[Vector<N>],
-        vec_ids: &[u32],
+        vectors: &'a [Vector<N>],
         rng: &mut R,
     ) -> Self {
-        debug_assert!(vectors.len() == vec_ids.len());
-        let (unique_vector, ids) = deduplicate(vectors, vec_ids);
+        assert!(check_unique(vectors), "Vectors are not unique");
 
-        let all_indexes: Vec<usize> = (0..unique_vector.len()).collect();
+        let all_indexes: Vec<usize> = (0..vectors.len()).collect();
 
         let trees: Vec<_> = (0..num_trees)
-            .map(|_| Node::build_tree(max_leaf_size, &all_indexes, &unique_vector, rng))
+            .map(|_| Node::build_tree(max_leaf_size, &all_indexes, vectors, rng))
             .collect();
 
         Self {
             trees,
-            ids,
-            values: unique_vector,
+            values: vectors,
         }
     }
 
@@ -168,7 +157,11 @@ impl<const N: usize> ANNIndex<N> {
     ///
     /// * `query` - The query vector to search for.
     /// * `top_k` - The number of nearest neighbors to return.
-    pub fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(u32, f32)> {
+    ///
+    /// # Returns
+    ///
+    /// * `Vec<(usize, f32)>` - The top_k nearest (index, distance) of the query vector.
+    pub fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(usize, f32)> {
         let mut candidates = HashSet::new();
         for tree in self.trees.iter() {
             tree.search(query, top_k, &mut candidates);
@@ -182,7 +175,7 @@ impl<const N: usize> ANNIndex<N> {
         results
             .into_iter()
             .take(top_k as usize)
-            .map(|(idx, dis)| (self.ids[idx], dis))
+            .map(|(idx, dis)| (idx, dis))
             .collect()
     }
 }
@@ -209,16 +202,14 @@ mod tests {
             Vector::from([30.0, 10.0, 20.0]),
         ];
 
-        let ids = vec![1, 2, 3, 4, 5, 6];
-
         // Build the index with 1 trees and leaf max_size of 1, this will result in exact matches
-        let index = ANNIndex::build(1, 1, &vectors, &ids, &mut seed_rng);
+        let index = ANNIndex::build(1, 1, &vectors, &mut seed_rng);
 
         // Query vectors itself should return exact matches
         for (i, vector) in vectors.iter().enumerate() {
             let results = index.search(vector, 1);
             assert_eq!(results.len(), 1);
-            assert_eq!(results[0].0, ids[i]);
+            assert_eq!(results[0].0, i);
         }
 
         // Query vectors with a small distance should return the closest vector
@@ -226,7 +217,7 @@ mod tests {
             let query = vector.add(&Vector::from([0.1, 0.1, 0.1]));
             let results = index.search(&query, 2);
             assert_eq!(results.len(), 2);
-            assert_eq!(results[0].0, ids[i]);
+            assert_eq!(results[0].0, i);
         }
     }
 
@@ -242,10 +233,8 @@ mod tests {
             Vector::from([30.1, 20.0, 10.0]),
         ];
 
-        let ids = vec![1, 2, 3, 4, 5, 6];
-
         // Build the index with 1 trees and leaf max_size of 1, this will result in exact matches
-        let index = ANNIndex::build(1, 2, &vectors, &ids, &mut seed_rng);
+        let index = ANNIndex::build(1, 2, &vectors, &mut seed_rng);
 
         // Query vectors itself should return exact matches
         for (i, vector) in vectors.iter().enumerate() {
@@ -253,41 +242,8 @@ mod tests {
             assert_eq!(results.len(), 2);
 
             let id_bucket = i / 2 * 2;
-            assert_eq!(
-                results[0].0 + results[1].0,
-                ids[id_bucket] + ids[id_bucket + 1]
-            );
+            assert_eq!(results[0].0 + results[1].0, id_bucket + id_bucket + 1);
         }
-    }
-
-    #[test]
-    fn test_duplicate_vectors() {
-        let mut seed_rng = StdRng::seed_from_u64(42);
-        let vectors = vec![
-            Vector::from([1.0, 1.0, 1.0]),
-            Vector::from([1.0, 1.0, 1.0]), // duplicate of the first vector
-            Vector::from([2.0, 2.0, 2.0]),
-        ];
-        let ids = vec![10, 20, 30];
-
-        let index = ANNIndex::build(5, 1, &vectors, &ids, &mut seed_rng);
-
-        // Query exactly at the duplicate value.
-        let query = Vector::from([1.0, 1.0, 1.0]);
-        let top_k = 3;
-        let results = index.search(&query, top_k);
-
-        // Due to deduplication, only 2 unique vectors should be indexed.
-        assert_eq!(results.len(), 2);
-
-        // The nearest must be the duplicate vector (first occurrence, id 10) with 0.0 distance.
-        assert_eq!(results[0].0, 10);
-        assert!(approx_eq(results[0].1, 0.0, 0.0001));
-
-        // The second result should be the distinct vector (id 30), whose squared distance is:
-        //   (1-2)²+(1-2)²+(1-2)² = 1+1+1 = 3.
-        assert_eq!(results[1].0, 30);
-        assert!(approx_eq(results[1].1, 3.0, 0.0001));
     }
 
     /// Test 3: High-dimensional vectors with a top_k value exceeding the number of unique vectors.
@@ -304,11 +260,10 @@ mod tests {
             Vector::from([0.0, 0.0, 1.0, 0.0]),
             Vector::from([0.0, 0.0, 0.0, 1.0]),
         ];
-        let ids = vec![100, 200, 300, 400, 500];
 
         // Build the index with 3 trees and a max_size of 2.
         let mut seed_rng = StdRng::seed_from_u64(42);
-        let index = ANNIndex::build(3, 2, &vectors, &ids, &mut seed_rng);
+        let index = ANNIndex::build(3, 2, &vectors, &mut seed_rng);
 
         // Query with a vector that lies equidistant from all the given vectors.
         let query = Vector::from([0.5, 0.5, 0.5, 0.5]);
