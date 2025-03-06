@@ -64,7 +64,7 @@ impl<const N: usize> Vector<N> {
         self.0
     }
 
-    fn slice(&self) -> &[f32; N] {
+    pub fn as_slice(&self) -> &[f32; N] {
         // Convert the Vec<f32> slice to a fixed-size array reference
         // This is safe because we know the Vector always has exactly N elements
         unsafe { &*(self.0.as_ptr() as *const [f32; N]) }
@@ -72,9 +72,9 @@ impl<const N: usize> Vector<N> {
 
     pub(crate) fn subtract_from(&self, other: &Vector<N>) -> Vector<N> {
         let vals = self
-            .slice()
+            .as_slice()
             .iter()
-            .zip(other.slice().iter())
+            .zip(other.as_slice().iter())
             .map(|(a, b)| a - b)
             .collect::<Vec<_>>();
         debug_assert_eq!(vals.capacity(), N);
@@ -88,9 +88,9 @@ impl<const N: usize> Vector<N> {
     #[cfg(test)]
     pub(crate) fn add(&self, vector: &Vector<N>) -> Vector<N> {
         let vals = self
-            .slice()
+            .as_slice()
             .iter()
-            .zip(vector.slice().iter())
+            .zip(vector.as_slice().iter())
             .map(|(a, b)| a + b)
             .collect::<Vec<_>>();
         Vector(vals)
@@ -98,32 +98,36 @@ impl<const N: usize> Vector<N> {
 
     pub(crate) fn avg(&self, vector: &Vector<N>) -> Vector<N> {
         let vals = self
-            .slice()
+            .as_slice()
             .iter()
-            .zip(vector.slice().iter())
+            .zip(vector.as_slice().iter())
             .map(|(a, b)| (a + b) / 2.0)
             .collect::<Vec<_>>();
         Vector(vals)
     }
 
     pub(crate) fn dot_product(&self, vector: &Vector<N>) -> f32 {
-        self.slice()
+        self.as_slice()
             .iter()
-            .zip(vector.slice().iter())
+            .zip(vector.as_slice().iter())
             .map(|(a, b)| a * b)
             .sum()
     }
 
     pub(crate) fn sq_euc_dist(&self, vector: &Vector<N>) -> f32 {
-        self.slice()
+        self.as_slice()
             .iter()
-            .zip(vector.slice().iter())
+            .zip(vector.as_slice().iter())
             .map(|(a, b)| (a - b).powi(2))
             .sum()
     }
 
     pub(crate) fn norm(&self) -> f32 {
-        self.slice().iter().map(|a| a.powi(2)).sum::<f32>().sqrt()
+        self.as_slice()
+            .iter()
+            .map(|a| a.powi(2))
+            .sum::<f32>()
+            .sqrt()
     }
 
     #[allow(unused)]
