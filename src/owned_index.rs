@@ -90,7 +90,7 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
 
         let mut results = candidates
             .into_iter()
-            .map(|offset| (offset, self.vectors[offset as usize].sq_euc_dist(query)))
+            .map(|offset| (offset, self.vectors[offset as usize].cosine_dist(query)))
             .collect::<Vec<_>>();
         results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
         results
