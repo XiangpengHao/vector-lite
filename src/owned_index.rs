@@ -92,7 +92,7 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
             .into_iter()
             .map(|offset| (offset, self.vectors[offset as usize].cosine_dist(query)))
             .collect::<Vec<_>>();
-        results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         results
             .into_iter()
             .take(top_k)
