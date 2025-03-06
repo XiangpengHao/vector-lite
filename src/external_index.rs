@@ -6,7 +6,7 @@ use crate::{Node, Vector};
 
 /// A simple LSH-based ANNIndex implementation.
 pub struct LshExternal<'a, const N: usize> {
-    trees: Vec<Node<N>>,
+    trees: Vec<Node<N, u32>>,
     values: &'a [Vector<N>],
 }
 
@@ -47,7 +47,7 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LshExternal<'a, N> {
         }
 
         let all_indexes: Vec<u32> = (0..vectors.len() as u32).collect();
-        let vector_fn = |idx: u32| &vectors[idx as usize];
+        let vector_fn = |idx: &u32| &vectors[*idx as usize];
         let trees: Vec<_> = (0..num_trees)
             .map(|_| Node::build_tree(max_leaf_size, &all_indexes, &vector_fn, rng))
             .collect();
@@ -66,7 +66,7 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LshExternal<'a, N> {
 
         let mut results = candidates
             .into_iter()
-            .map(|idx| (idx as usize, self.values[idx as usize].sq_euc_dist(query)))
+            .map(|idx| (*idx as usize, self.values[*idx as usize].sq_euc_dist(query)))
             .collect::<Vec<_>>();
         results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
         results.into_iter().take(top_k).collect()

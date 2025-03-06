@@ -25,10 +25,8 @@ pub trait ANNIndexOwned<const N: usize> {
 /// A lightweight lsh-based ann index.
 #[derive(Encode, Decode)]
 pub struct VectorLite<const N: usize> {
-    vectors: Vec<Vector<N>>,
-    id_to_offset: HashMap<String, u32>,
-    offset_to_id: HashMap<u32, String>,
-    trees: Vec<Node<N>>,
+    vectors: HashMap<String, Vector<N>>,
+    trees: Vec<Node<N, String>>,
     max_leaf_size: usize,
 }
 
@@ -38,9 +36,7 @@ impl<const N: usize> VectorLite<N> {
     /// Lower max_leaf_size means higher accuracy but larger memory usage.
     pub fn new(num_trees: usize, max_leaf_size: usize) -> Self {
         Self {
-            vectors: Vec::new(),
-            id_to_offset: HashMap::new(),
-            offset_to_id: HashMap::new(),
+            vectors: HashMap::new(),
             trees: (0..num_trees).map(|_| Node::new_empty()).collect(),
             max_leaf_size,
         }
@@ -72,35 +68,22 @@ impl<const N: usize> VectorLite<N> {
 
 impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
     fn insert_with_rng(&mut self, vector: Vector<N>, id: String, rng: &mut impl Rng) {
-        self.vectors.push(vector);
-        let offset = self.vectors.len() as u32 - 1;
-        self.offset_to_id.insert(offset, id.clone());
-        self.id_to_offset.insert(id, offset);
-        let vector_fn = |idx: u32| &self.vectors[idx as usize];
+        self.vectors.insert(id.clone(), vector);
+        let vector_fn = |id: &String| &self.vectors[id];
         for tree in &mut self.trees {
-            tree.insert(
-                &vector_fn,
-                self.vectors.len() as u32 - 1,
-                rng,
-                self.max_leaf_size,
-            );
+            tree.insert(&vector_fn, id.clone(), rng, self.max_leaf_size);
         }
     }
 
     fn delete_by_id(&mut self, id: String) {
-        let offset = self.id_to_offset[&id];
         for tree in &mut self.trees {
-            tree.delete(&self.vectors[offset as usize], offset);
+            tree.delete(&self.vectors[&id], &id);
         }
-        self.id_to_offset.remove(&id);
-        self.offset_to_id.remove(&offset);
-        // TODO: also remove from vectors.
+        self.vectors.remove(&id);
     }
 
     fn get_by_id(&self, id: String) -> Option<&Vector<N>> {
-        self.id_to_offset
-            .get(&id)
-            .map(|offset| &self.vectors[*offset as usize])
+        self.vectors.get(&id)
     }
 
     fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)> {
@@ -111,13 +94,13 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
 
         let mut results = candidates
             .into_iter()
-            .map(|offset| (offset, self.vectors[offset as usize].sq_euc_dist(query)))
+            .map(|id| (id, self.vectors[id].sq_euc_dist(query)))
             .collect::<Vec<_>>();
         results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
         results
             .into_iter()
             .take(top_k)
-            .map(|(offset, dist)| (self.offset_to_id[&offset].clone(), dist))
+            .map(|(id, dist)| (id.clone(), dist))
             .collect()
     }
 }
