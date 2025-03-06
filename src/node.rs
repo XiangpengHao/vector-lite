@@ -1,7 +1,6 @@
-use std::{cmp::min, collections::HashSet};
-
 use rand::{Rng, seq::IndexedRandom};
 use serde::{Deserialize, Serialize};
+use std::{cmp::min, collections::HashSet};
 
 use crate::Vector;
 
@@ -108,22 +107,18 @@ impl<const N: usize> Node<N> {
     }
 
     /// Returns true if the node needs to be merged with the parent
-    pub(crate) fn delete<'a>(
-        &mut self,
-        vector_accessor: &impl Fn(u32) -> &'a Vector<N>,
-        vector_idx: u32,
-    ) -> bool {
+    pub(crate) fn delete<'a>(&mut self, vector: &Vector<N>, vector_offset: u32) -> bool {
         match self {
             Node::Leaf(leaf) => {
-                leaf.0.retain(|&id| id != vector_idx);
+                leaf.0.retain(|&id| id != vector_offset);
                 leaf.0.is_empty()
             }
             Node::Inner(inner) => {
-                let is_above = inner.hyperplane.point_is_above(vector_accessor(vector_idx));
+                let is_above = inner.hyperplane.point_is_above(vector);
 
                 match is_above {
                     true => {
-                        let needs_merge = inner.above.delete(vector_accessor, vector_idx);
+                        let needs_merge = inner.above.delete(vector, vector_offset);
                         if needs_merge {
                             *self = std::mem::replace(
                                 &mut inner.below,
@@ -133,7 +128,7 @@ impl<const N: usize> Node<N> {
                         false
                     }
                     false => {
-                        let needs_merge = inner.below.delete(vector_accessor, vector_idx);
+                        let needs_merge = inner.below.delete(vector, vector_offset);
                         if needs_merge {
                             *self = std::mem::replace(
                                 &mut inner.above,
@@ -422,12 +417,12 @@ mod tests {
             }
 
             let first_idx = vector_indexes[0];
-            let result = node.delete(&vector_fn, first_idx);
+            let result = node.delete(&vectors[first_idx as usize], first_idx);
 
             assert_eq!(result, false);
 
             let second_idx = vector_indexes[1];
-            let result = node.delete(&vector_fn, second_idx);
+            let result = node.delete(&vectors[second_idx as usize], second_idx);
 
             assert_eq!(result, true);
         }
@@ -451,7 +446,7 @@ mod tests {
                 _ => panic!("Expected an inner node"),
             }
 
-            let result = node.delete(&vector_fn, 1); // Delete the "above" vector
+            let result = node.delete(&vectors[1], 1); // Delete the "above" vector
 
             assert_eq!(result, false);
 
@@ -483,14 +478,14 @@ mod tests {
             let initial_inner_count = node.inner_node_count();
             assert!(initial_inner_count > 0);
 
-            node.delete(&vector_fn, 2); // Delete a vector from right side
-            node.delete(&vector_fn, 3); // Delete the other vector from right side
+            node.delete(&vectors[2], 2); // Delete a vector from right side
+            node.delete(&vectors[3], 3); // Delete the other vector from right side
 
             let after_delete_count = node.inner_node_count();
             assert!(after_delete_count < initial_inner_count);
 
-            node.delete(&vector_fn, 0);
-            let final_result = node.delete(&vector_fn, 1);
+            node.delete(&vectors[0], 0);
+            let final_result = node.delete(&vectors[1], 1);
 
             assert_eq!(final_result, true);
         }
