@@ -47,3 +47,13 @@ let loaded_index = VectorLite::<DIM>::from_bytes(&serialized);
 ```bash
 cargo bench --bench ann_benchmark "ANN Index Building/10000"
 ```
+
+## WASM
+
+Need to build with [`wasm_js` backend](https://docs.rs/getrandom/latest/getrandom/#webassembly-support) for `getrandom` crate.
+```bash
+env RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown
+```
+
+## License
+Apache-2.0

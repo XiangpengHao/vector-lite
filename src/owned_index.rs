@@ -1,7 +1,10 @@
 use crate::{Node, Vector};
 use bincode::{Decode, Encode};
 use rand::Rng;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 pub trait ANNIndexOwned<const N: usize> {
     /// Insert a vector into the index.
@@ -22,12 +25,53 @@ pub trait ANNIndexOwned<const N: usize> {
     fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)>;
 }
 
+#[derive(Encode, Decode)]
+pub struct VectorLiteIndex<const N: usize> {
+    trees: Vec<Node<N, Rc<String>>>,
+    max_leaf_size: usize,
+}
+
+impl<const N: usize> VectorLiteIndex<N> {
+    fn new(num_trees: usize, max_leaf_size: usize) -> Self {
+        Self {
+            trees: (0..num_trees).map(|_| Node::new_empty()).collect(),
+            max_leaf_size,
+        }
+    }
+
+    /// Search for the top_k nearest neighbors of the query vector.
+    /// Returns a vector of ids, user may use the ids to compute the distance themselves.
+    /// This is helpful when the vector is stored in a different place.
+    pub fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<String> {
+        let mut candidates = HashSet::new();
+        for tree in &self.trees {
+            tree.search(query, top_k, &mut candidates);
+        }
+        candidates
+            .into_iter()
+            .map(|id| id.as_ref().clone())
+            .collect()
+    }
+
+    /// Serialize the index to a byte vector.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let config = bincode::config::standard();
+        bincode::encode_to_vec(self, config).unwrap()
+    }
+
+    /// Deserialize the index from a byte vector.
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let config = bincode::config::standard();
+        let (index, _) = bincode::decode_from_slice(bytes, config).unwrap();
+        index
+    }
+}
+
 /// A lightweight lsh-based ann index.
 #[derive(Encode, Decode)]
 pub struct VectorLite<const N: usize> {
-    vectors: HashMap<String, Vector<N>>,
-    trees: Vec<Node<N, String>>,
-    max_leaf_size: usize,
+    vectors: HashMap<Rc<String>, Vector<N>>,
+    index: VectorLiteIndex<N>,
 }
 
 impl<const N: usize> VectorLite<N> {
@@ -37,8 +81,7 @@ impl<const N: usize> VectorLite<N> {
     pub fn new(num_trees: usize, max_leaf_size: usize) -> Self {
         Self {
             vectors: HashMap::new(),
-            trees: (0..num_trees).map(|_| Node::new_empty()).collect(),
-            max_leaf_size,
+            index: VectorLiteIndex::new(num_trees, max_leaf_size),
         }
     }
 
@@ -50,6 +93,11 @@ impl<const N: usize> VectorLite<N> {
     /// Check if the index is empty.
     pub fn is_empty(&self) -> bool {
         self.vectors.is_empty()
+    }
+
+    /// Get the index.
+    pub fn index(&self) -> &VectorLiteIndex<N> {
+        &self.index
     }
 
     /// Serialize the index to a byte vector.
@@ -68,15 +116,17 @@ impl<const N: usize> VectorLite<N> {
 
 impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
     fn insert_with_rng(&mut self, vector: Vector<N>, id: String, rng: &mut impl Rng) {
+        let id = Rc::new(id);
         self.vectors.insert(id.clone(), vector);
-        let vector_fn = |id: &String| &self.vectors[id];
-        for tree in &mut self.trees {
-            tree.insert(&vector_fn, id.clone(), rng, self.max_leaf_size);
+        let vector_fn = |id: &Rc<String>| &self.vectors[id];
+        for tree in &mut self.index.trees {
+            tree.insert(&vector_fn, id.clone(), rng, self.index.max_leaf_size);
         }
     }
 
     fn delete_by_id(&mut self, id: String) {
-        for tree in &mut self.trees {
+        let id = Rc::new(id);
+        for tree in &mut self.index.trees {
             tree.delete(&self.vectors[&id], &id);
         }
         self.vectors.remove(&id);
@@ -87,21 +137,17 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
     }
 
     fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)> {
-        let mut candidates = HashSet::new();
-        for tree in self.trees.iter() {
-            tree.search(query, top_k, &mut candidates);
-        }
+        let candidates = self.index.search(query, top_k);
 
         let mut results = candidates
             .into_iter()
-            .map(|id| (id, self.vectors[id].sq_euc_dist(query)))
+            .map(|id| {
+                let dist = self.vectors[&id].sq_euc_dist(query);
+                (id, dist)
+            })
             .collect::<Vec<_>>();
         results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        results
-            .into_iter()
-            .take(top_k)
-            .map(|(id, dist)| (id.clone(), dist))
-            .collect()
+        results.into_iter().take(top_k).collect()
     }
 }
 
