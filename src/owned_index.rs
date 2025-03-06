@@ -46,11 +46,23 @@ impl<const N: usize> VectorLite<N> {
         }
     }
 
+    /// Get the number of vectors in the index.
+    pub fn len(&self) -> usize {
+        self.vectors.len()
+    }
+
+    /// Check if the index is empty.
+    pub fn is_empty(&self) -> bool {
+        self.vectors.is_empty()
+    }
+
+    /// Serialize the index to a byte vector.
     pub fn to_bytes(&self) -> Vec<u8> {
         let config = bincode::config::standard();
         bincode::encode_to_vec(self, config).unwrap()
     }
 
+    /// Deserialize the index from a byte vector.
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let config = bincode::config::standard();
         let (index, _) = bincode::decode_from_slice(bytes, config).unwrap();
@@ -99,14 +111,9 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
 
         let mut results = candidates
             .into_iter()
-            .map(|offset| {
-                (
-                    offset,
-                    self.vectors[offset as usize].cosine_similarity(query),
-                )
-            })
+            .map(|offset| (offset, self.vectors[offset as usize].sq_euc_dist(query)))
             .collect::<Vec<_>>();
-        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
         results
             .into_iter()
             .take(top_k)

@@ -126,6 +126,7 @@ impl<const N: usize> Vector<N> {
         self.slice().iter().map(|a| a.powi(2)).sum::<f32>().sqrt()
     }
 
+    #[allow(unused)]
     pub(crate) fn cosine_similarity(&self, vector: &Vector<N>) -> f32 {
         let dot = self.dot_product(vector);
         let norm_self = self.norm();
