@@ -1,6 +1,6 @@
 use bincode::{Decode, Encode};
 use rand::{Rng, seq::IndexedRandom};
-use std::{cmp::min, collections::HashSet};
+use std::collections::HashSet;
 
 use crate::Vector;
 
@@ -150,12 +150,10 @@ impl<const N: usize> Node<N> {
     ) -> usize {
         match self {
             Node::Leaf(leaf) => {
-                let leaf_values = &(leaf.0);
-                let num_candidates_found = min(n, leaf_values.len());
-                for value in leaf_values.iter().take(num_candidates_found) {
+                for value in leaf.0.iter() {
                     candidates.insert(*value);
                 }
-                num_candidates_found
+                leaf.0.len()
             }
             Node::Inner(inner) => {
                 let above = inner.hyperplane.point_is_above(query);
