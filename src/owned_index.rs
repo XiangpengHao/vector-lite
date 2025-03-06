@@ -15,6 +15,9 @@ pub trait ANNIndexOwned<const N: usize> {
     /// Delete a vector from the index by id.
     fn delete_by_id(&mut self, id: String);
 
+    /// Get a vector from the index by id.
+    fn get_by_id(&self, id: String) -> Option<&Vector<N>>;
+
     /// Search for the top_k nearest neighbors of the query vector.
     fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)>;
 }
@@ -82,6 +85,12 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
         // TODO: also remove from vectors.
     }
 
+    fn get_by_id(&self, id: String) -> Option<&Vector<N>> {
+        self.id_to_offset
+            .get(&id)
+            .map(|offset| &self.vectors[*offset as usize])
+    }
+
     fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)> {
         let mut candidates = HashSet::new();
         for tree in self.trees.iter() {
@@ -90,7 +99,12 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
 
         let mut results = candidates
             .into_iter()
-            .map(|offset| (offset, self.vectors[offset as usize].cosine_dist(query)))
+            .map(|offset| {
+                (
+                    offset,
+                    self.vectors[offset as usize].cosine_similarity(query),
+                )
+            })
             .collect::<Vec<_>>();
         results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         results
