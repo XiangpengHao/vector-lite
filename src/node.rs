@@ -1,10 +1,10 @@
+use bincode::{Decode, Encode};
 use rand::{Rng, seq::IndexedRandom};
-use serde::{Deserialize, Serialize};
 use std::{cmp::min, collections::HashSet};
 
 use crate::Vector;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Encode, Decode)]
 struct HyperPlane<const N: usize> {
     coefficients: Vector<N>,
     constant: f32,
@@ -20,7 +20,7 @@ impl<const N: usize> HyperPlane<N> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Encode, Decode)]
 pub(crate) enum Node<const N: usize> {
     Inner(Box<InnerNode<N>>),
     Leaf(Box<LeafNode<N>>),
@@ -107,7 +107,7 @@ impl<const N: usize> Node<N> {
     }
 
     /// Returns true if the node needs to be merged with the parent
-    pub(crate) fn delete<'a>(&mut self, vector: &Vector<N>, vector_offset: u32) -> bool {
+    pub(crate) fn delete(&mut self, vector: &Vector<N>, vector_offset: u32) -> bool {
         match self {
             Node::Leaf(leaf) => {
                 leaf.0.retain(|&id| id != vector_offset);
@@ -172,7 +172,7 @@ impl<const N: usize> Node<N> {
         }
     }
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Encode, Decode)]
 pub(crate) struct LeafNode<const N: usize>(Vec<u32>); // vector_idx
 
 impl<const N: usize> LeafNode<N> {
@@ -181,7 +181,7 @@ impl<const N: usize> LeafNode<N> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Encode, Decode)]
 pub(crate) struct InnerNode<const N: usize> {
     hyperplane: HyperPlane<N>,
     above: Node<N>,

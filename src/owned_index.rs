@@ -1,6 +1,6 @@
 use crate::{Node, Vector};
+use bincode::{Decode, Encode};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 pub trait ANNIndexOwned<const N: usize> {
@@ -20,7 +20,7 @@ pub trait ANNIndexOwned<const N: usize> {
 }
 
 /// A lightweight lsh-based ann index.
-#[derive(Serialize, Deserialize)]
+#[derive(Encode, Decode)]
 pub struct VectorLite<const N: usize> {
     vectors: Vec<Vector<N>>,
     id_to_offset: HashMap<String, u32>,
@@ -44,14 +44,13 @@ impl<const N: usize> VectorLite<N> {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut s = flexbuffers::FlexbufferSerializer::new();
-        self.serialize(&mut s).unwrap();
-        s.take_buffer()
+        let config = bincode::config::standard();
+        bincode::encode_to_vec(self, config).unwrap()
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        let s = flexbuffers::Reader::get_root(bytes).unwrap();
-        let index: Self = VectorLite::deserialize(s).unwrap();
+        let config = bincode::config::standard();
+        let (index, _) = bincode::decode_from_slice(bytes, config).unwrap();
         index
     }
 }
