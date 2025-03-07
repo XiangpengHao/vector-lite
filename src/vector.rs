@@ -114,7 +114,7 @@ impl<const N: usize> Vector<N> {
             .sum()
     }
 
-    pub(crate) fn sq_euc_dist(&self, vector: &Vector<N>) -> f32 {
+    pub fn sq_euc_dist(&self, vector: &Vector<N>) -> f32 {
         self.as_slice()
             .iter()
             .zip(vector.as_slice().iter())
@@ -130,8 +130,7 @@ impl<const N: usize> Vector<N> {
             .sqrt()
     }
 
-    #[allow(unused)]
-    pub(crate) fn cosine_similarity(&self, vector: &Vector<N>) -> f32 {
+    pub fn cosine_similarity(&self, vector: &Vector<N>) -> f32 {
         let dot = self.dot_product(vector);
         let norm_self = self.norm();
         let norm_vector = vector.norm();

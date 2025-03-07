@@ -213,7 +213,7 @@ fn build_hyperplane<'a, R: Rng, const N: usize, K: VectorKey>(
     let mut above = Vec::new();
     let mut below = Vec::new();
     for id in all_ids.iter() {
-        if hyperplane.point_is_above(vector_accessor(&id)) {
+        if hyperplane.point_is_above(vector_accessor(id)) {
             above.push(id.clone());
         } else {
             below.push(id.clone());
