@@ -55,5 +55,8 @@ Need to build with [`wasm_js` backend](https://docs.rs/getrandom/latest/getrando
 env RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown
 ```
 
+## Notable users
+VectorLite is the primary vector database used in [Seen](https://github.com/XiangpengHao/seen) -- knowledge management for the impatient. 
+
 ## License
 Apache-2.0
