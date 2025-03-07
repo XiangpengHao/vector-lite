@@ -35,7 +35,7 @@ for (id, distance) in results {
     println!("ID: {}, Distance: {}", id, distance);
 }
 
-index.delete_by_id("102".to_string());
+index.delete_by_id("102");
 
 // De/serialize from/to disk
 let serialized = index.to_bytes();
