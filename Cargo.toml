@@ -1,6 +1,6 @@
 [package]
 name = "vector-lite"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2024"
 description = "The SQLite of Vector Database in Rust."
 authors = ["Xiangpeng Hao <haoxiangpeng123@gmail.com>"]

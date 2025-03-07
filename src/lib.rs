@@ -8,7 +8,7 @@ pub use external_index::{ANNIndexExternal, LinearSearchExternal, LshExternal};
 mod vector;
 pub use vector::Vector;
 mod owned_index;
-pub use owned_index::{ANNIndexOwned, VectorLite, VectorLiteIndex};
+pub use owned_index::{ANNIndexOwned, ScoreMetric, VectorLite, VectorLiteIndex};
 
 pub trait VectorKey: bincode::Encode + Clone + PartialEq + Eq + Hash + 'static {}
 

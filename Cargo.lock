@@ -531,7 +531,7 @@ checksum = "a1a88342087869553c259588a3ec9ca73ce9b2d538b7051ba5789ff236b6c129"
 
 [[package]]
 name = "vector-lite"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "bincode",
  "criterion",

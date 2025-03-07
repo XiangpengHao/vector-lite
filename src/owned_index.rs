@@ -6,6 +6,11 @@ use std::{
     rc::Rc,
 };
 
+pub enum ScoreMetric {
+    Cosine,
+    L2,
+}
+
 pub trait ANNIndexOwned<const N: usize> {
     /// Insert a vector into the index.
     fn insert(&mut self, vector: Vector<N>, id: String) {
@@ -22,7 +27,19 @@ pub trait ANNIndexOwned<const N: usize> {
     fn get_by_id(&self, id: String) -> Option<&Vector<N>>;
 
     /// Search for the top_k nearest neighbors of the query vector.
-    fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)>;
+    /// Returns a array of (id, score) pairs, higher score means closer.
+    fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)> {
+        self.search_with_metric(query, top_k, ScoreMetric::L2)
+    }
+
+    /// Search for the top_k nearest neighbors of the query vector.
+    /// Returns a array of (id, score) pairs, higher score means closer.
+    fn search_with_metric(
+        &self,
+        query: &Vector<N>,
+        top_k: usize,
+        metric: ScoreMetric,
+    ) -> Vec<(String, f32)>;
 }
 
 #[derive(Encode, Decode)]
@@ -136,18 +153,38 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
         self.vectors.get(&id)
     }
 
-    fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)> {
+    fn search_with_metric(
+        &self,
+        query: &Vector<N>,
+        top_k: usize,
+        metric: ScoreMetric,
+    ) -> Vec<(String, f32)> {
         let candidates = self.index.search(query, top_k);
 
-        let mut results = candidates
-            .into_iter()
-            .map(|id| {
-                let dist = self.vectors[&id].sq_euc_dist(query);
-                (id, dist)
-            })
-            .collect::<Vec<_>>();
-        results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        results.into_iter().take(top_k).collect()
+        match metric {
+            ScoreMetric::L2 => {
+                let mut results = candidates
+                    .into_iter()
+                    .map(|id| {
+                        let dist = self.vectors[&id].sq_euc_dist(query);
+                        (id, dist)
+                    })
+                    .collect::<Vec<_>>();
+                results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                results.into_iter().take(top_k).collect()
+            }
+            ScoreMetric::Cosine => {
+                let mut results = candidates
+                    .into_iter()
+                    .map(|id| {
+                        let dist = self.vectors[&id].cosine_similarity(query);
+                        (id, dist)
+                    })
+                    .collect::<Vec<_>>();
+                results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+                results.into_iter().take(top_k).collect()
+            }
+        }
     }
 }
 
