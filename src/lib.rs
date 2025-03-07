@@ -10,11 +10,7 @@ pub use vector::Vector;
 mod owned_index;
 pub use owned_index::{ANNIndexOwned, VectorLite, VectorLiteIndex};
 
-// TODO: no need for Hash
-pub trait VectorKey:
-    bincode::Encode + bincode::Decode + Clone + PartialEq + Eq + Hash + 'static
-{
-}
+pub trait VectorKey: bincode::Encode + Clone + PartialEq + Eq + Hash + 'static {}
 
 impl VectorKey for String {}
 
