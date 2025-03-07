@@ -21,10 +21,11 @@ pub trait ANNIndexOwned<const N: usize> {
     fn insert_with_rng(&mut self, vector: Vector<N>, id: String, rng: &mut impl Rng);
 
     /// Delete a vector from the index by id.
-    fn delete_by_id(&mut self, id: String);
+    /// Returns true if the vector was deleted, false if it was not found.
+    fn delete_by_id(&mut self, id: &str) -> bool;
 
     /// Get a vector from the index by id.
-    fn get_by_id(&self, id: String) -> Option<&Vector<N>>;
+    fn get_by_id(&self, id: &str) -> Option<&Vector<N>>;
 
     /// Search for the top_k nearest neighbors of the query vector.
     /// Returns a array of (id, score) pairs, higher score means closer.
@@ -59,15 +60,12 @@ impl<const N: usize> VectorLiteIndex<N> {
     /// Search for the top_k nearest neighbors of the query vector.
     /// Returns a vector of ids, user may use the ids to compute the distance themselves.
     /// This is helpful when the vector is stored in a different place.
-    pub fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<String> {
+    pub fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<&String> {
         let mut candidates = HashSet::new();
         for tree in &self.trees {
             tree.search(query, top_k, &mut candidates);
         }
-        candidates
-            .into_iter()
-            .map(|id| id.as_ref().clone())
-            .collect()
+        candidates.into_iter().map(|id| id.as_ref()).collect()
     }
 
     /// Serialize the index to a byte vector.
@@ -141,16 +139,19 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
         }
     }
 
-    fn delete_by_id(&mut self, id: String) {
-        let id = Rc::new(id);
+    fn delete_by_id(&mut self, id: &str) -> bool {
+        let id = Rc::new(id.to_string());
+        let Some(vector) = self.vectors.remove(&id) else {
+            return false;
+        };
         for tree in &mut self.index.trees {
-            tree.delete(&self.vectors[&id], &id);
+            tree.delete(&vector, &id);
         }
-        self.vectors.remove(&id);
+        true
     }
 
-    fn get_by_id(&self, id: String) -> Option<&Vector<N>> {
-        self.vectors.get(&id)
+    fn get_by_id(&self, id: &str) -> Option<&Vector<N>> {
+        self.vectors.get(&Rc::new(id.to_string()))
     }
 
     fn search_with_metric(
@@ -161,30 +162,36 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
     ) -> Vec<(String, f32)> {
         let candidates = self.index.search(query, top_k);
 
-        match metric {
+        let results = match metric {
             ScoreMetric::L2 => {
                 let mut results = candidates
                     .into_iter()
                     .map(|id| {
-                        let dist = self.vectors[&id].sq_euc_dist(query);
+                        let dist = self.vectors[id].sq_euc_dist(query);
                         (id, dist)
                     })
                     .collect::<Vec<_>>();
                 results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-                results.into_iter().take(top_k).collect()
+                results
             }
             ScoreMetric::Cosine => {
                 let mut results = candidates
                     .into_iter()
                     .map(|id| {
-                        let dist = self.vectors[&id].cosine_similarity(query);
+                        let dist = self.vectors[id].cosine_similarity(query);
                         (id, dist)
                     })
                     .collect::<Vec<_>>();
                 results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-                results.into_iter().take(top_k).collect()
+                results
             }
-        }
+        };
+
+        results
+            .into_iter()
+            .take(top_k)
+            .map(|(id, dist)| (id.clone(), dist))
+            .collect()
     }
 }
 
@@ -277,7 +284,7 @@ mod tests {
         assert_eq!(results[0].0, "5");
 
         // Delete that point
-        index.delete_by_id("5".to_string());
+        index.delete_by_id("5");
 
         // Search again - should find a different point now
         let results = index.search(&Vector::from([5.0, 5.0]), 1);
@@ -288,8 +295,8 @@ mod tests {
         assert!(results[0].0 == "4" || results[0].0 == "6");
 
         // Delete several points and verify none are found
-        index.delete_by_id("4".to_string());
-        index.delete_by_id("6".to_string());
+        index.delete_by_id("4");
+        index.delete_by_id("6");
 
         let results = index.search(&Vector::from([5.0, 5.0]), 3);
         for result in results {
@@ -321,5 +328,26 @@ mod tests {
             assert_eq!(original_results[i].0, loaded_results[i].0);
             assert!((original_results[i].1 - loaded_results[i].1).abs() < 1e-6);
         }
+    }
+
+    #[test]
+    fn test_deleting_nonexistent_id() {
+        let mut index = VectorLite::<3>::new(2, 2);
+        let mut rng = create_test_rng();
+
+        index.insert_with_rng(Vector::from([1.0, 0.0, 0.0]), "101".to_string(), &mut rng);
+        index.insert_with_rng(Vector::from([0.0, 1.0, 0.0]), "102".to_string(), &mut rng);
+
+        let result = index.delete_by_id("non_existent_id");
+
+        assert_eq!(result, false);
+
+        assert_eq!(index.len(), 2);
+        assert!(index.get_by_id("101").is_some());
+        assert!(index.get_by_id("102").is_some());
+
+        let result = index.delete_by_id("101");
+        assert_eq!(result, true);
+        assert_eq!(index.len(), 1);
     }
 }
