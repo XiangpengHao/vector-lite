@@ -55,6 +55,15 @@ Need to build with [`wasm_js` backend](https://docs.rs/getrandom/latest/getrando
 env RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown
 ```
 
+Run tests:
+```bash
+# Install wasm-pack
+curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+# Run test
+env RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack test --headless --firefox
+```
+
 ## Notable users
 VectorLite is the primary vector database used in [Seen](https://github.com/XiangpengHao/seen) -- knowledge management for the impatient. 
 

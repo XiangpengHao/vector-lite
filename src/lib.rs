@@ -17,3 +17,4 @@ impl VectorKey for String {}
 impl VectorKey for u32 {}
 
 impl VectorKey for Rc<String> {}
+
