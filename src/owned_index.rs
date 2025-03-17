@@ -1,41 +1,34 @@
 use crate::{Node, Vector};
+use async_trait::async_trait;
 use bincode::{Decode, Encode};
-use rand::Rng;
-use std::{
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use std::collections::{HashMap, HashSet};
 
 pub enum ScoreMetric {
     Cosine,
     L2,
 }
 
+#[async_trait]
 pub trait ANNIndexOwned<const N: usize> {
     /// Insert a vector into the index.
-    fn insert(&mut self, vector: Vector<N>, id: String) {
-        self.insert_with_rng(vector, id, &mut rand::rng());
-    }
-
-    /// Insert a vector into the index with a custom rng.
-    fn insert_with_rng(&mut self, vector: Vector<N>, id: String, rng: &mut impl Rng);
+    async fn insert(&mut self, vector: Vector<N>, id: String);
 
     /// Delete a vector from the index by id.
     /// Returns true if the vector was deleted, false if it was not found.
-    fn delete_by_id(&mut self, id: &str) -> bool;
+    async fn delete_by_id(&mut self, id: &str) -> bool;
 
     /// Get a vector from the index by id.
-    fn get_by_id(&self, id: &str) -> Option<&Vector<N>>;
+    async fn get_by_id(&self, id: &str) -> Option<&Vector<N>>;
 
     /// Search for the top_k nearest neighbors of the query vector.
     /// Returns a array of (id, score) pairs, higher score means closer.
-    fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)> {
-        self.search_with_metric(query, top_k, ScoreMetric::L2)
+    async fn search(&self, query: &Vector<N>, top_k: usize) -> Vec<(String, f32)> {
+        self.search_with_metric(query, top_k, ScoreMetric::L2).await
     }
 
     /// Search for the top_k nearest neighbors of the query vector.
     /// Returns a array of (id, score) pairs, higher score means closer.
-    fn search_with_metric(
+    async fn search_with_metric(
         &self,
         query: &Vector<N>,
         top_k: usize,
@@ -45,7 +38,7 @@ pub trait ANNIndexOwned<const N: usize> {
 
 #[derive(Encode, Decode)]
 pub struct VectorLiteIndex<const N: usize> {
-    trees: Vec<Node<N, Rc<String>>>,
+    trees: Vec<Node<N, String>>,
     max_leaf_size: usize,
 }
 
@@ -65,7 +58,7 @@ impl<const N: usize> VectorLiteIndex<N> {
         for tree in &self.trees {
             tree.search(query, top_k, &mut candidates);
         }
-        candidates.into_iter().map(|id| id.as_ref()).collect()
+        candidates.into_iter().collect()
     }
 
     /// Serialize the index to a byte vector.
@@ -85,8 +78,14 @@ impl<const N: usize> VectorLiteIndex<N> {
 /// A lightweight lsh-based ann index.
 #[derive(Encode, Decode)]
 pub struct VectorLite<const N: usize> {
-    vectors: HashMap<Rc<String>, Vector<N>>,
+    vectors: HashMap<String, Vector<N>>,
     index: VectorLiteIndex<N>,
+}
+
+impl<const N: usize> Default for VectorLite<N> {
+    fn default() -> Self {
+        Self::new(4, 30)
+    }
 }
 
 impl<const N: usize> VectorLite<N> {
@@ -129,32 +128,32 @@ impl<const N: usize> VectorLite<N> {
     }
 }
 
+#[async_trait]
 impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
-    fn insert_with_rng(&mut self, vector: Vector<N>, id: String, rng: &mut impl Rng) {
-        let id = Rc::new(id);
+    async fn insert(&mut self, vector: Vector<N>, id: String) {
         self.vectors.insert(id.clone(), vector);
-        let vector_fn = |id: &Rc<String>| &self.vectors[id];
+        let vector_fn = |id: &String| &self.vectors[id];
         for tree in &mut self.index.trees {
-            tree.insert(&vector_fn, id.clone(), rng, self.index.max_leaf_size);
+            tree.insert(&vector_fn, id.clone(), self.index.max_leaf_size);
         }
     }
 
-    fn delete_by_id(&mut self, id: &str) -> bool {
-        let id = Rc::new(id.to_string());
-        let Some(vector) = self.vectors.remove(&id) else {
+    async fn delete_by_id(&mut self, id: &str) -> bool {
+        let Some(vector) = self.vectors.remove(id) else {
             return false;
         };
+        let id = id.to_string();
         for tree in &mut self.index.trees {
             tree.delete(&vector, &id);
         }
         true
     }
 
-    fn get_by_id(&self, id: &str) -> Option<&Vector<N>> {
-        self.vectors.get(&Rc::new(id.to_string()))
+    async fn get_by_id(&self, id: &str) -> Option<&Vector<N>> {
+        self.vectors.get(id)
     }
 
-    fn search_with_metric(
+    async fn search_with_metric(
         &self,
         query: &Vector<N>,
         top_k: usize,
@@ -198,8 +197,6 @@ impl<const N: usize> ANNIndexOwned<N> for VectorLite<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use rand::rngs::StdRng;
 
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
@@ -207,36 +204,38 @@ mod tests {
     macro_rules! cross_test {
         (fn $name:ident() $body:block) => {
             #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-            #[cfg_attr(not(target_arch = "wasm32"), test)]
-            fn $name() $body
+            #[cfg_attr(not(target_arch = "wasm32"), tokio::test)]
+            async fn $name() $body
         };
-    }
-
-    // Helper function to create a deterministic RNG for testing
-    fn create_test_rng() -> StdRng {
-        StdRng::seed_from_u64(42)
     }
 
     cross_test!(
         fn test_basic_operations() {
             let mut index = VectorLite::<3>::new(2, 2);
-            let mut rng = create_test_rng();
 
             // Insert some vectors
-            index.insert_with_rng(Vector::from([1.0, 0.0, 0.0]), "101".to_string(), &mut rng);
-            index.insert_with_rng(Vector::from([0.0, 1.0, 0.0]), "102".to_string(), &mut rng);
-            index.insert_with_rng(Vector::from([0.0, 0.0, 1.0]), "103".to_string(), &mut rng);
-            index.insert_with_rng(Vector::from([1.0, 1.0, 0.0]), "104".to_string(), &mut rng);
+            index
+                .insert(Vector::from([1.0, 0.0, 0.0]), "101".to_string())
+                .await;
+            index
+                .insert(Vector::from([0.0, 1.0, 0.0]), "102".to_string())
+                .await;
+            index
+                .insert(Vector::from([0.0, 0.0, 1.0]), "103".to_string())
+                .await;
+            index
+                .insert(Vector::from([1.0, 1.0, 0.0]), "104".to_string())
+                .await;
 
             // Search for nearest neighbors
-            let results = index.search(&Vector::from([0.9, 0.1, 0.0]), 2);
+            let results = index.search(&Vector::from([0.9, 0.1, 0.0]), 2).await;
 
             // Verify correct results
             assert_eq!(results.len(), 2);
             assert_eq!(results[0].0, "101"); // First result should be ID 101 ([1.0, 0.0, 0.0])
 
             // Query close to second vector
-            let results = index.search(&Vector::from([0.1, 0.9, 0.0]), 1);
+            let results = index.search(&Vector::from([0.1, 0.9, 0.0]), 1).await;
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].0, "102"); // Should be ID 102 ([0.0, 1.0, 0.0])
         }
@@ -248,8 +247,6 @@ mod tests {
             let mut single_tree = VectorLite::<2>::new(1, 2);
             let mut multi_tree = VectorLite::<2>::new(5, 2);
 
-            let mut rng = create_test_rng();
-
             // Create a grid of vectors
             for x in 0..5 {
                 for y in 0..5 {
@@ -257,16 +254,16 @@ mod tests {
                     let vector = Vector::from([x as f32, y as f32]);
 
                     // Insert into both indexes
-                    single_tree.insert_with_rng(vector.clone(), id.to_string(), &mut rng);
-                    multi_tree.insert_with_rng(vector, id.to_string(), &mut rng);
+                    single_tree.insert(vector.clone(), id.to_string()).await;
+                    multi_tree.insert(vector, id.to_string()).await;
                 }
             }
 
             // Query in a spot where approximation might occur
             let query = Vector::from([2.3, 2.3]);
 
-            let single_results = single_tree.search(&query, 5);
-            let multi_results = multi_tree.search(&query, 5);
+            let single_results = single_tree.search(&query, 5).await;
+            let multi_results = multi_tree.search(&query, 5).await;
 
             // Multi-tree should find at least as many results as single tree
             assert!(multi_results.len() >= single_results.len());
@@ -283,24 +280,23 @@ mod tests {
     cross_test!(
         fn test_deletion() {
             let mut index = VectorLite::<2>::new(3, 2);
-            let mut rng = create_test_rng();
 
             // Insert vectors with sequential IDs
             for i in 0..10 {
                 let x = i as f32;
-                index.insert_with_rng(Vector::from([x, x]), i.to_string(), &mut rng);
+                index.insert(Vector::from([x, x]), i.to_string()).await;
             }
 
             // Search for a point and verify it exists
-            let results = index.search(&Vector::from([5.0, 5.0]), 1);
+            let results = index.search(&Vector::from([5.0, 5.0]), 1).await;
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].0, "5");
 
             // Delete that point
-            index.delete_by_id("5");
+            index.delete_by_id(&"5".to_string()).await;
 
             // Search again - should find a different point now
-            let results = index.search(&Vector::from([5.0, 5.0]), 1);
+            let results = index.search(&Vector::from([5.0, 5.0]), 1).await;
             assert_eq!(results.len(), 1);
             assert_ne!(results[0].0, "5"); // Should not find the deleted point
 
@@ -308,10 +304,10 @@ mod tests {
             assert!(results[0].0 == "4" || results[0].0 == "6");
 
             // Delete several points and verify none are found
-            index.delete_by_id("4");
-            index.delete_by_id("6");
+            index.delete_by_id(&"4".to_string()).await;
+            index.delete_by_id(&"6".to_string()).await;
 
-            let results = index.search(&Vector::from([5.0, 5.0]), 3);
+            let results = index.search(&Vector::from([5.0, 5.0]), 3).await;
             for result in results {
                 assert!(result.0 != "4" && result.0 != "5" && result.0 != "6");
             }
@@ -322,20 +318,25 @@ mod tests {
         fn test_file_operations() {
             // Create a new index
             let mut index = VectorLite::<3>::new(2, 2);
-            let mut rng = create_test_rng();
 
             // Insert some test vectors
-            index.insert_with_rng(Vector::from([1.0, 0.0, 0.0]), "101".to_string(), &mut rng);
-            index.insert_with_rng(Vector::from([0.0, 1.0, 0.0]), "102".to_string(), &mut rng);
-            index.insert_with_rng(Vector::from([0.0, 0.0, 1.0]), "103".to_string(), &mut rng);
+            index
+                .insert(Vector::from([1.0, 0.0, 0.0]), "101".to_string())
+                .await;
+            index
+                .insert(Vector::from([0.0, 1.0, 0.0]), "102".to_string())
+                .await;
+            index
+                .insert(Vector::from([0.0, 0.0, 1.0]), "103".to_string())
+                .await;
 
             let serialized = index.to_bytes();
             let loaded_index = VectorLite::<3>::from_bytes(&serialized);
 
             // Verify search results match
             let query = Vector::from([0.9, 0.1, 0.0]);
-            let original_results = index.search(&query, 2);
-            let loaded_results = loaded_index.search(&query, 2);
+            let original_results = index.search(&query, 2).await;
+            let loaded_results = loaded_index.search(&query, 2).await;
 
             assert_eq!(original_results.len(), loaded_results.len());
             for i in 0..original_results.len() {
@@ -348,20 +349,23 @@ mod tests {
     cross_test!(
         fn test_deleting_nonexistent_id() {
             let mut index = VectorLite::<3>::new(2, 2);
-            let mut rng = create_test_rng();
 
-            index.insert_with_rng(Vector::from([1.0, 0.0, 0.0]), "101".to_string(), &mut rng);
-            index.insert_with_rng(Vector::from([0.0, 1.0, 0.0]), "102".to_string(), &mut rng);
+            index
+                .insert(Vector::from([1.0, 0.0, 0.0]), "101".to_string())
+                .await;
+            index
+                .insert(Vector::from([0.0, 1.0, 0.0]), "102".to_string())
+                .await;
 
-            let result = index.delete_by_id("non_existent_id");
+            let result = index.delete_by_id(&"non_existent_id".to_string()).await;
 
             assert_eq!(result, false);
 
             assert_eq!(index.len(), 2);
-            assert!(index.get_by_id("101").is_some());
-            assert!(index.get_by_id("102").is_some());
+            assert!(index.get_by_id(&"101".to_string()).await.is_some());
+            assert!(index.get_by_id(&"102".to_string()).await.is_some());
 
-            let result = index.delete_by_id("101");
+            let result = index.delete_by_id(&"101".to_string()).await;
             assert_eq!(result, true);
             assert_eq!(index.len(), 1);
         }

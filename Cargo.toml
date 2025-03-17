@@ -12,6 +12,8 @@ documentation = "https://docs.rs/vector-lite/latest/vector_lite/"
 rand = "0.9.0"
 bincode = "2.0.0"
 getrandom = { version = "0.3.1" }
+opendal = { version = "0.52.0", features = ["services-s3"] }
+async-trait = "0.1.88"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3.1", features = ["wasm_js"] }
@@ -21,6 +23,7 @@ criterion = { version = "0.5.1", default-features = false, features = [
 	"plotters",
 	"cargo_bench_support",
 ] }
+tokio = { version = "1.44.1", features = ["rt", "macros", "rt-multi-thread"] }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3.50"

@@ -1,6 +1,7 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use tokio;
 use vector_lite::{
     ANNIndexExternal, ANNIndexOwned, LinearSearchExternal, LshExternal, Vector, VectorLite,
 };
@@ -34,11 +35,7 @@ fn bench_build_index(c: &mut Criterion) {
             b.iter_with_setup(
                 || generate_random_vectors::<DIM>(size, 42),
                 |vectors| {
-                    let mut seed_rng = StdRng::seed_from_u64(42);
-                    black_box(
-                        LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng)
-                            .unwrap(),
-                    );
+                    black_box(LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors).unwrap());
                 },
             );
         });
@@ -57,9 +54,7 @@ fn bench_search(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             // Setup: Build the index once
             let vectors = generate_random_vectors::<DIM>(size, 42);
-            let mut seed_rng = StdRng::seed_from_u64(42);
-            let index =
-                LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng).unwrap();
+            let index = LshExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors).unwrap();
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
@@ -85,10 +80,7 @@ fn bench_linear_search(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             // Setup: Build the index once
             let vectors = generate_random_vectors::<DIM>(size, 42);
-            let mut seed_rng = StdRng::seed_from_u64(42);
-            let index =
-                LinearSearchExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors, &mut seed_rng)
-                    .unwrap();
+            let index = LinearSearchExternal::build(NUM_TREES, MAX_LEAF_SIZE, &vectors).unwrap();
 
             // Generate a random query vector
             let mut query_rng = StdRng::seed_from_u64(123);
@@ -112,12 +104,14 @@ fn bench_serialize(c: &mut Criterion) {
     for size in sizes {
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             let vectors = generate_random_vectors::<DIM>(size, 42);
-            let mut seed_rng = StdRng::seed_from_u64(42);
 
             let mut index = VectorLite::<DIM>::new(NUM_TREES, MAX_LEAF_SIZE);
-            for (i, vector) in vectors.iter().enumerate() {
-                index.insert_with_rng(vector.clone(), format!("{}", i), &mut seed_rng);
-            }
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                for (i, vector) in vectors.iter().enumerate() {
+                    index.insert(vector.clone(), format!("{}", i)).await;
+                }
+            });
 
             b.iter(|| {
                 black_box(index.to_bytes());
@@ -136,12 +130,14 @@ fn bench_deserialize(c: &mut Criterion) {
     for size in sizes {
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             let vectors = generate_random_vectors::<DIM>(size, 42);
-            let mut seed_rng = StdRng::seed_from_u64(42);
 
             let mut index = VectorLite::<DIM>::new(NUM_TREES, MAX_LEAF_SIZE);
-            for (i, vector) in vectors.iter().enumerate() {
-                index.insert_with_rng(vector.clone(), format!("{}", i), &mut seed_rng);
-            }
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                for (i, vector) in vectors.iter().enumerate() {
+                    index.insert(vector.clone(), format!("{}", i)).await;
+                }
+            });
 
             let bytes = index.to_bytes();
 

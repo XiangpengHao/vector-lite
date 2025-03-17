@@ -1,7 +1,5 @@
 use std::collections::HashSet;
 
-use rand::Rng;
-
 use crate::{Node, Vector};
 
 /// A simple LSH-based ANNIndex implementation.
@@ -33,11 +31,10 @@ fn check_unique<const N: usize>(vectors: &[Vector<N>]) -> bool {
 impl<'a, const N: usize> ANNIndexExternal<'a, N> for LshExternal<'a, N> {
     type Index = Self;
 
-    fn build<R: Rng>(
+    fn build(
         num_trees: usize,
         max_leaf_size: usize,
         vectors: &'a [Vector<N>],
-        rng: &mut R,
     ) -> Result<Self::Index, &'static str> {
         if !check_unique(vectors) {
             return Err("Vectors are not unique");
@@ -49,7 +46,7 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LshExternal<'a, N> {
         let all_indexes: Vec<u32> = (0..vectors.len() as u32).collect();
         let vector_fn = |idx: &u32| &vectors[*idx as usize];
         let trees: Vec<_> = (0..num_trees)
-            .map(|_| Node::build_tree(max_leaf_size, &all_indexes, &vector_fn, rng))
+            .map(|_| Node::build_tree(max_leaf_size, &all_indexes, &vector_fn))
             .collect();
 
         Ok(Self {
@@ -95,11 +92,10 @@ pub trait ANNIndexExternal<'a, const N: usize> {
     /// * `num_trees` - The number of trees to build, higher means more accurate but slower and larger memory usage.
     /// * `max_leaf_size` - The maximum number of vectors in a leaf node, lower means higher accuracy but slower search.
     /// * `vectors` - The vectors to build the index from.
-    fn build<R: Rng>(
+    fn build(
         num_trees: usize,
         max_leaf_size: usize,
         vectors: &'a [Vector<N>],
-        rng: &mut R,
     ) -> Result<Self::Index, &'static str>;
 
     /// Search for the top_k nearest neighbors of the query vector.
@@ -128,11 +124,10 @@ pub struct LinearSearchExternal<'a, const N: usize> {
 impl<'a, const N: usize> ANNIndexExternal<'a, N> for LinearSearchExternal<'a, N> {
     type Index = Self;
 
-    fn build<R: Rng>(
+    fn build(
         _num_trees: usize,
         _max_leaf_size: usize,
         vectors: &'a [Vector<N>],
-        _rng: &mut R,
     ) -> Result<Self::Index, &'static str> {
         if vectors.is_empty() {
             return Err("Cannot build index with empty vector set");
@@ -204,8 +199,6 @@ impl<'a, const N: usize> ANNIndexExternal<'a, N> for LinearSearchExternal<'a, N>
 
 #[cfg(test)]
 mod tests {
-    use rand::{SeedableRng, rngs::StdRng};
-
     use super::*;
     // A small helper for approximate float equality.
     fn approx_eq(a: f32, b: f32, tol: f32) -> bool {
@@ -214,7 +207,6 @@ mod tests {
 
     #[test]
     fn test_basic_nearest_neighbor() {
-        let mut seed_rng = StdRng::seed_from_u64(42);
         let vectors = vec![
             Vector::from([10.0, 20.0, 30.0]),
             Vector::from([10.0, 30.0, 20.0]),
@@ -225,7 +217,7 @@ mod tests {
         ];
 
         // Build the index with 1 trees and leaf max_size of 1, this will result in exact matches
-        let index = LshExternal::build(1, 1, &vectors, &mut seed_rng).unwrap();
+        let index = LshExternal::build(1, 1, &vectors).unwrap();
 
         // Query vectors itself should return exact matches
         for (i, vector) in vectors.iter().enumerate() {
@@ -242,7 +234,7 @@ mod tests {
             assert_eq!(results[0].0, i);
         }
 
-        let index = LinearSearchExternal::build(1, 1, &vectors, &mut seed_rng).unwrap();
+        let index = LinearSearchExternal::build(1, 1, &vectors).unwrap();
         for (i, vector) in vectors.iter().enumerate() {
             let results = index.search(vector, 1);
             assert_eq!(results.len(), 1);
@@ -259,7 +251,6 @@ mod tests {
 
     #[test]
     fn test_top_2_nearest_neighbor() {
-        let mut seed_rng = StdRng::seed_from_u64(42);
         let vectors = vec![
             Vector::from([10.0, 20.0, 30.0]),
             Vector::from([10.0, 20.0, 30.1]),
@@ -270,7 +261,7 @@ mod tests {
         ];
 
         // Build the index with 1 trees and leaf max_size of 1, this will result in exact matches
-        let index = LshExternal::build(1, 2, &vectors, &mut seed_rng).unwrap();
+        let index = LshExternal::build(1, 2, &vectors).unwrap();
 
         // Query vectors itself should return exact matches
         for (i, vector) in vectors.iter().enumerate() {
@@ -281,7 +272,7 @@ mod tests {
             assert_eq!(results[0].0 + results[1].0, id_bucket + id_bucket + 1);
         }
 
-        let index = LinearSearchExternal::build(1, 2, &vectors, &mut seed_rng).unwrap();
+        let index = LinearSearchExternal::build(1, 2, &vectors).unwrap();
         for (i, vector) in vectors.iter().enumerate() {
             let results = index.search(vector, 2);
             let id_bucket = i / 2 * 2;
@@ -305,8 +296,7 @@ mod tests {
         ];
 
         // Build the index with 3 trees and a max_size of 2.
-        let mut seed_rng = StdRng::seed_from_u64(42);
-        let index = LshExternal::build(3, 2, &vectors, &mut seed_rng).unwrap();
+        let index = LshExternal::build(3, 2, &vectors).unwrap();
 
         // Query with a vector that lies equidistant from all the given vectors.
         let query = Vector::from([0.5, 0.5, 0.5, 0.5]);

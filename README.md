@@ -23,23 +23,28 @@ use vector_lite::{VectorLite, Vector, ANNIndexOwned};
 // Create a new index with 4 trees and leaf size of 10
 const DIM: usize = 3;
 let mut index = VectorLite::<DIM>::new(4, 10);
-index.insert([1.0, 0.0, 0.0].into(), "101".to_string());
-index.insert([0.0, 1.0, 0.0].into(), "102".to_string());
-index.insert([0.0, 0.0, 1.0].into(), "103".to_string());
-index.insert([0.7, 0.7, 0.0].into(), "104".to_string());
+let async_task = async {
+index.insert([1.0, 0.0, 0.0].into(), "101".to_string()).await;
+index.insert([0.0, 1.0, 0.0].into(), "102".to_string()).await;
+index.insert([0.0, 0.0, 1.0].into(), "103".to_string()).await;
+index.insert([0.7, 0.7, 0.0].into(), "104".to_string()).await;
 
 let query = [0.9, 0.1, 0.0].into();
-let results = index.search(&query, 2);
+let results = index.search(&query, 2).await;
 
 for (id, distance) in results {
     println!("ID: {}, Distance: {}", id, distance);
 }
 
-index.delete_by_id("102");
+index.delete_by_id(&"102").await;
 
 // De/serialize from/to disk
 let serialized = index.to_bytes();
 let loaded_index = VectorLite::<DIM>::from_bytes(&serialized);
+};
+
+let rt = tokio::runtime::Runtime::new().unwrap();
+rt.block_on(async_task);
 ```
 
 ## Benchmark
